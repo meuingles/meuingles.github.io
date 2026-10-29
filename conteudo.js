@@ -114,7 +114,10 @@ const CURSO = {
         ["Você esbarra em alguém sem querer:", ["Sorry!", "Excuse me!", "You're welcome!"], 0, "Depois que aconteceu, peça desculpa: sorry."],
         ["Você não entendeu o que a pessoa falou:", ["Can you repeat that, please?", "You're welcome.", "Nice to meet you."], 0, "Pedir pra repetir é a frase mais útil do começo."],
         ["A pessoa fala rápido demais. Você pede:", ["Can you speak more slowly, please?", "Can you speak more fast?", "Slowly you speak."], 0, "More slowly = mais devagar."]
-      ] },
+      ],
+      dialogo: { titulo: "Prazer, eu sou a Ana", contexto: "A Ana e o Leo se conhecem.", nomes: ["Ana", "Leo"],
+        falas: [[0, "Hi! Good morning.", "Oi! Bom dia."], [1, "Good morning! How are you?", "Bom dia! Como você está?"], [0, "I'm fine, thanks. And you?", "Estou bem, obrigada. E você?"], [1, "I'm good. What's your name?", "Tô bem. Qual é o seu nome?"], [0, "My name is Ana. And you?", "Meu nome é Ana. E você?"], [1, "I'm Leo. Nice to meet you.", "Eu sou o Leo. Prazer em te conhecer."], [0, "Nice to meet you too. Where are you from?", "O prazer é meu. De onde você é?"], [1, "I'm from Brazil.", "Eu sou do Brasil."], [0, "Sorry, can you repeat that, please?", "Desculpa, pode repetir, por favor?"], [1, "Brazil. I'm from Brazil.", "Brasil. Eu sou do Brasil."], [0, "Oh, me too!", "Ah, eu também!"]],
+        perguntas: [["Como o Leo está?", ["Bem", "Cansado", "Com fome"], 0, "Ele diz “I'm good”: tô bem."], ["Qual é o nome dela?", ["Ana", "Leo", "Julia"], 0, "“My name is Ana.”"], ["Por que a Ana diz “Sorry, can you repeat that, please?”", ["Ela não entendeu e pediu pra repetir", "Ela pediu desculpa por chegar atrasada", "Ela está se despedindo"], 0, "Can you repeat that, please? = pode repetir, por favor?"], ["De onde a Ana é?", ["Do Brasil, igual ao Leo", "Ela não disse", "De outro país"], 0, "“Oh, me too!” = ah, eu também! Ela também é do Brasil."]] } },
 
     { id: "s4", semana: 1, titulo: "Números de 0 a 12", resumo: "A base pra horas, preços e telefone",
       itens: [
@@ -267,7 +270,10 @@ const CURSO = {
         ["Como se escreve 40?", ["forty", "fourty", "fourteen"], 0, "Forty, sem U. Fourteen é 14."],
         ["Quanto é fifteen + five?", ["twenty", "fifty", "twenty-five"], 0, "15 + 5 = 20: twenty."],
         ["“How much is it?” serve pra perguntar:", ["o preço", "a idade", "as horas"], 0, "How much = quanto (custa)."]
-      ] },
+      ],
+      dialogo: { titulo: "Trabalho e família", contexto: "A Ana e o Leo conversam sobre trabalho e família.", nomes: ["Ana", "Leo"],
+        falas: [[0, "Leo, what do you do?", "Leo, o que você faz?"], [1, "I'm a teacher. And you?", "Eu sou professor. E você?"], [0, "I work in customer support. I work from home.", "Eu trabalho com atendimento ao cliente. Trabalho de casa."], [1, "Nice! I have two sisters. They're students.", "Legal! Eu tenho duas irmãs. Elas são estudantes."], [0, "How old are they?", "Quantos anos elas têm?"], [1, "Fifteen and twenty-five.", "Quinze e vinte e cinco."], [0, "And how old are you?", "E quantos anos você tem?"], [1, "I'm thirty years old.", "Eu tenho trinta anos."], [0, "Me too!", "Eu também!"]],
+        perguntas: [["O que o Leo faz?", ["É professor", "É engenheiro", "É estudante"], 0, "“I'm a teacher.”"], ["Onde a Ana trabalha?", ["De casa", "Num escritório", "Numa escola"], 0, "“I work from home.”"], ["Quantos anos têm as irmãs do Leo?", ["15 e 25", "50 e 25", "13 e 30"], 0, "Fifteen (15) e twenty-five (25). Cuidado: fifteen é 15, fifty é 50."], ["Quantos anos a Ana tem?", ["30, igual ao Leo", "25", "Ela não disse"], 0, "Ela responde “Me too!”: eu também tenho 30."]] } },
 
     { id: "s9", semana: 2, titulo: "Não e perguntas", resumo: "Negativa e pergunta com to be",
       itens: [
@@ -407,7 +413,10 @@ const CURSO = {
         ["I wake ___ at seven.", ["up", "on", "in"], 0, "Acordar = wake up."],
         ["I go ___ bed at eleven.", ["to", "at", "in"], 0, "Ir dormir = go to bed."],
         ["Tomar banho:", ["take a shower", "make a shower", "do a shower"], 0, "Tomar banho (de chuveiro) = take a shower."]
-      ] },
+      ],
+      dialogo: { titulo: "Que horas são?", contexto: "De manhã, a Ana e o Leo se encontram.", nomes: ["Ana", "Leo"],
+        falas: [[0, "Good morning, Leo!", "Bom dia, Leo!"], [1, "Good morning! What time is it?", "Bom dia! Que horas são?"], [0, "It's seven thirty.", "São sete e meia."], [1, "Oh no! I'm late. I go to work at eight.", "Ah não! Estou atrasado. Eu vou pro trabalho às oito."], [0, "I wake up at six and I have breakfast at six thirty.", "Eu acordo às seis e tomo café às seis e meia."], [1, "Six? That's early!", "Seis? Que cedo!"], [0, "Yes. But on Saturday, I wake up at ten.", "Sim. Mas no sábado, eu acordo às dez."], [1, "Me too! Bye, see you tomorrow!", "Eu também! Tchau, até amanhã!"]],
+        perguntas: [["Que horas são na conversa?", ["7h30", "7h00", "8h30"], 0, "“It's seven thirty.”"], ["Por que o Leo diz “Oh no!”?", ["Ele está atrasado", "Ele está com fome", "Ele está cansado"], 0, "“I'm late.” = estou atrasado."], ["Que horas a Ana acorda nos dias de semana?", ["Às 6h", "Às 10h", "Às 8h"], 0, "“I wake up at six.”"], ["E no sábado?", ["Às 10h", "Às 6h30", "Ela não disse"], 0, "“On Saturday, I wake up at ten.”"]] } },
 
     { id: "s14", semana: 3, titulo: "Ele trabalha", resumo: "O -s do presente e o don't/doesn't",
       itens: [
@@ -556,7 +565,10 @@ const CURSO = {
         ["Cozinha:", ["kitchen", "chicken", "kitten"], 0, "Kitchen = cozinha. Chicken = frango. Kitten = gatinho."],
         ["Banheiro:", ["bathroom", "bedroom", "living room"], 0, "Bathroom = banheiro. Bedroom = quarto."],
         ["Is there a window? Yes, there ___.", ["is", "are", "it"], 0, "Resposta curta: Yes, there is."]
-      ] },
+      ],
+      dialogo: { titulo: "Um café, por favor", contexto: "A Ana pede um café. O Leo trabalha no café.", nomes: ["Ana", "Leo"],
+        falas: [[1, "Good afternoon! Can I help you?", "Boa tarde! Posso ajudar?"], [0, "Hi! Can I have a coffee, please?", "Oi! Pode me ver um café, por favor?"], [1, "Sure. Small or large?", "Claro. Pequeno ou grande?"], [0, "Small, please. Without sugar.", "Pequeno, por favor. Sem açúcar."], [1, "For here or to go?", "Pra comer aqui ou pra levar?"], [0, "To go, please. And a water.", "Pra levar, por favor. E uma água."], [1, "With ice?", "Com gelo?"], [0, "No, thanks. How much is it?", "Não, obrigada. Quanto custa?"], [1, "It's five dollars.", "São cinco dólares."], [0, "Here you go. Thank you!", "Aqui está. Obrigada!"], [1, "You're welcome. Have a nice day!", "De nada. Tenha um bom dia!"]],
+        perguntas: [["O que a Ana pede?", ["Um café pequeno, sem açúcar", "Um café grande, com açúcar", "Um chá"], 0, "“Small, please. Without sugar.”"], ["É pra comer aqui ou pra levar?", ["Pra levar", "Pra comer aqui", "Ela não disse"], 0, "“To go, please.”"], ["A água é com gelo?", ["Não", "Sim", "Ela não pediu água"], 0, "“With ice?” “No, thanks.”"], ["Quanto custa?", ["5 dólares", "15 dólares", "50 dólares"], 0, "“It's five dollars.”"]] } },
 
     { id: "s19", semana: 4, titulo: "Cores e como as coisas são", resumo: "Adjetivo vem antes",
       itens: [

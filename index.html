@@ -259,6 +259,31 @@ h2.sec svg{width:18px;height:18px;vertical-align:-3px;margin-right:4px}
 .confete i{position:absolute;top:-20px;width:9px;height:14px;border-radius:2px;animation-name:cai;animation-timing-function:ease-in;animation-fill-mode:forwards}
 @keyframes cai{to{top:105%;transform:rotate(540deg) translateX(30px)}}
 .pre{white-space:pre-wrap}
+/* ---- v3: fala, diálogo, correção ---- */
+.micbox{text-align:center;margin:14px 0 8px}
+.mic{width:88px;height:88px;border-radius:50%;display:inline-grid;place-items:center;background:linear-gradient(135deg,var(--accent),var(--green));color:#071016;margin-bottom:8px}
+.mic svg{width:38px;height:38px}
+.mic.on{background:var(--red);color:#fff;animation:ondas 1.2s ease-out infinite}
+@keyframes ondas{0%{box-shadow:0 0 0 0 rgba(255,107,122,.5)}100%{box-shadow:0 0 0 22px rgba(255,107,122,0)}}
+.ouvido{font-size:18px;font-weight:700;margin:6px 0;min-height:26px}
+.falares{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;margin:12px 0;text-align:center}
+.marks{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:8px 0}
+.marks span{padding:3px 8px;border-radius:8px;font-weight:700;font-size:14px}
+.marks span.ok{background:rgba(52,211,153,.16);color:var(--green)}
+.marks span.no{background:rgba(255,107,122,.16);color:var(--red)}
+.fb .marks{justify-content:flex-start}
+.chip.ghost{background:none;border-color:transparent;color:var(--muted);margin-top:10px}
+.card.dialc{border-color:rgba(139,108,255,.45);background:linear-gradient(160deg,rgba(139,108,255,.14),var(--panel))}
+.card.dialc .lbl{display:flex;align-items:center;gap:6px;color:#b9a6ff}
+.card.dialc .lbl svg{width:14px;height:14px}
+.spk.lg svg{width:30px;height:30px}
+.dl{display:flex;gap:12px;align-items:flex-start;padding:10px 8px;border-radius:12px;transition:background .2s}
+.dl.on{background:rgba(90,209,255,.12)}
+.dn{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.05em}
+.dl.q0 .dn{color:var(--accent)}.dl.q1 .dn{color:#b9a6ff}
+.card.corr{border-color:rgba(52,211,153,.4)}
+.center .chip{margin:4px}
+.chip svg{width:15px;height:15px;flex:none}
 @media (min-width:700px){#app{padding-top:34px}}
 </style>
 </head>
@@ -267,7 +292,7 @@ h2.sec svg{width:18px;height:18px;vertical-align:-3px;margin-right:4px}
 <nav id="tabs"></nav>
 <div id="toast"></div>
 <noscript><p style="padding:20px">Ative o JavaScript para usar o Meu Inglês.</p></noscript>
-<script src="conteudo.js?v=2"></script>
-<script src="app.js?v=2"></script>
+<script src="conteudo.js?v=3"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>

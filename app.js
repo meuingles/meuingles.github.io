@@ -1,9 +1,9 @@
 'use strict';
 (() => {
 const CHAVE = 'meu-ingles-v1';
-const VERSAO = 'Fase 1.5 · versão 2.0';
+const VERSAO = 'Fase 2 · versão 3.0';
 const INT = { 1: 1, 2: 2, 3: 4, 4: 7, 5: 15, 6: 30, 7: 60, 8: 120 };
-const XPV = { acerto: 10, combo: 10, sessao: 50, perfeita: 30, cartao: 2, revisao: 10, missao: 80, missaoCompleta: 20 };
+const XPV = { acerto: 10, combo: 10, sessao: 50, perfeita: 30, cartao: 2, revisao: 10, missao: 80, missaoCompleta: 20, dialogo: 10, dialogoFim: 20 };
 const app = document.getElementById('app');
 const tabsEl = document.getElementById('tabs');
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -23,7 +23,7 @@ const fds = s => { const w = pd(s).getDay(); return w === 0 || w === 6; };
 const segundaDe = s => { const w = pd(s).getDay(); return addDias(s, w === 0 ? -6 : 1 - w); };
 
 /* ---------- estado ---------- */
-const padrao = () => ({ v: 1, criado: new Date().toISOString(), ajustes: { nome: '', lembrete: '0800', voz: '', rate: 0.9, sons: true, ocultarInstalar: false }, feitas: {}, cards: {}, erros: {}, dias: {}, atual: null, xp: 0, conquistas: {}, stats: {}, textos: [], melhorSeq: 0, melhorCombo: 0 });
+const padrao = () => ({ v: 1, criado: new Date().toISOString(), ajustes: { nome: '', lembrete: '0800', voz: '', rate: 0.9, sons: true, fala: true, ocultarInstalar: false }, feitas: {}, cards: {}, erros: {}, dias: {}, atual: null, xp: 0, conquistas: {}, stats: {}, textos: [], errosTexto: [], ultimoBackup: null, melhorSeq: 0, melhorCombo: 0 });
 let S;
 function carregar() {
   let x = null;
@@ -33,6 +33,7 @@ function carregar() {
   S.ajustes = Object.assign(p.ajustes, S.ajustes || {});
   ['feitas', 'cards', 'erros', 'dias', 'stats'].forEach(k => { if (!S[k] || typeof S[k] !== 'object' || Array.isArray(S[k])) S[k] = {}; });
   if (!Array.isArray(S.textos)) S.textos = [];
+  if (!Array.isArray(S.errosTexto)) S.errosTexto = [];
   if (typeof S.melhorCombo !== 'number') S.melhorCombo = 0;
   if (typeof S.xp !== 'number') S.xp = Object.values(S.feitas).reduce((a, f) => a + (f.acertos || 0) * XPV.acerto + XPV.sessao, 0);
   const novoConq = !S.conquistas || typeof S.conquistas !== 'object';
@@ -81,7 +82,10 @@ const IC = {
   livro: svg('<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2V5z"/><path d="M4 19a2 2 0 0 1 2-2h13"/>'),
   lapis: svg('<path d="M15 4l5 5L9 20H4v-5L15 4z"/>'),
   copiar: svg('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/>'),
-  mais: svg('<path d="M12 5v14M5 12h14"/>')
+  mais: svg('<path d="M12 5v14M5 12h14"/>'),
+  mic: svg('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/>'),
+  play: svg('<path d="M7 4v16l13-8z"/>'),
+  stop: svg('<rect x="6" y="6" width="12" height="12" rx="2"/>')
 };
 
 /* ---------- voz ---------- */
@@ -108,6 +112,31 @@ function falar(txt, lento) {
   const sy = window.speechSynthesis;
   if (sy.speaking || sy.pending) { sy.cancel(); setTimeout(() => sy.speak(u), 80); } else sy.speak(u);
 }
+function vozB() {
+  const a = vozAtual(); const outras = vozes.filter(v => v !== a);
+  for (const p of ['Daniel', 'Fred', 'Aaron', 'Alex', 'Tom', 'Arthur', 'Rishi', 'Google UK English Male', 'Microsoft Guy', 'Microsoft David']) { const v = outras.find(x => x.name.includes(p)); if (v) return v; }
+  return outras.find(x => /en[-_](US|GB)/i.test(x.lang)) || outras[0] || a;
+}
+function utter(txt, voz, lento, grave) {
+  const u = new SpeechSynthesisUtterance(String(txt).replace(/[()]/g, '').replace(/\.\.\./g, ', '));
+  if (voz) { u.voice = voz; u.lang = voz.lang; } else u.lang = 'en-US';
+  u.rate = lento ? 0.65 : (Number(S.ajustes.rate) || 0.9); if (grave) u.pitch = 0.7; return u;
+}
+function marcarLinha(i) { document.querySelectorAll('.dl').forEach((el, k) => el.classList.toggle('on', k === i)); }
+function tocarDialogo(d, lento) {
+  if (!temVoz) { toast('Este navegador não tem voz disponível.'); return; }
+  const vA = vozAtual(), vB = vozB(); const sy = speechSynthesis;
+  const us = d.falas.map(([q, en], i) => { const u = utter(en, q === 0 ? vA : vB, lento, q === 1 && vB === vA); u.onstart = () => marcarLinha(i); if (i === d.falas.length - 1) u.onend = () => marcarLinha(-1); return u; });
+  const ir = () => us.forEach(u => sy.speak(u));
+  if (sy.speaking || sy.pending) { sy.cancel(); setTimeout(ir, 120); } else ir();
+}
+function falarLinha(d, i) {
+  if (!temVoz) return;
+  const [q, en] = d.falas[i]; const vA = vozAtual(), vB = vozB();
+  const u = utter(en, q === 0 ? vA : vB, false, q === 1 && vB === vA); u.onstart = () => marcarLinha(i); u.onend = () => marcarLinha(-1);
+  const sy = speechSynthesis; if (sy.speaking || sy.pending) { sy.cancel(); setTimeout(() => sy.speak(u), 80); } else sy.speak(u);
+}
+function pararVoz() { if (temVoz) speechSynthesis.cancel(); marcarLinha(-1); }
 let actx = null;
 function tocar(notas, dur, vol) {
   if (!S.ajustes.sons) return;
@@ -253,7 +282,76 @@ function tick() {
 const ctx = () => (R.ses && R.ses.modo === 'refazer') ? R.ses : S.atual;
 
 /* ---------- exercícios ---------- */
-const HAB = { ouvir: 'Ouvir', escrever: 'Ouvir', significa: 'Entender', escolha: 'Gramática', inverso: 'Formar frases', montar: 'Formar frases', traduzir: 'Formar frases' };
+const HAB = { ouvir: 'Ouvir', escrever: 'Ouvir', dialogo: 'Ouvir', significa: 'Entender', escolha: 'Gramática', inverso: 'Formar frases', montar: 'Formar frases', traduzir: 'Formar frases', falar: 'Falar' };
+
+/* ---------- fala (microfone) ---------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+const temGravador = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+let rec = null, gravador = null, pedacos = [];
+const NUMS = { 0: 'zero', 1: 'one', 2: 'two', 3: 'three', 4: 'four', 5: 'five', 6: 'six', 7: 'seven', 8: 'eight', 9: 'nine', 10: 'ten', 11: 'eleven', 12: 'twelve', 13: 'thirteen', 14: 'fourteen', 15: 'fifteen', 16: 'sixteen', 17: 'seventeen', 18: 'eighteen', 19: 'nineteen', 20: 'twenty', 25: 'twenty five', 30: 'thirty', 40: 'forty', 50: 'fifty', 60: 'sixty', 70: 'seventy', 80: 'eighty', 90: 'ninety', 100: 'one hundred' };
+const palavrasFala = t => expandir(String(t).replace(/\d+/g, d => NUMS[d] || d)).split(' ').filter(Boolean);
+function pontuar(dito, alvo) {
+  const a = palavrasFala(alvo); const pool = palavrasFala(dito);
+  const marks = a.map(w => { const i = pool.indexOf(w); if (i >= 0) { pool.splice(i, 1); return { w, ok: true }; } return { w, ok: false }; });
+  return { score: a.length ? marks.filter(m => m.ok).length / a.length : 0, marks };
+}
+const passouFala = (sc, alvo) => (palavrasFala(alvo).length <= 2 ? sc >= 0.99 : sc >= 0.75);
+function pararMic() { if (rec) { try { rec.abort(); } catch (e) { /* ok */ } rec = null; } if (gravador && gravador.state === 'recording') { try { gravador.stop(); } catch (e) { /* ok */ } } }
+function iniciarMic() {
+  const P = R.prat; const ex = P.fila[P.pos];
+  P.fala = P.fala || { tent: 0 };
+  if (!SR || P.fala.modoGravar) return iniciarGravacao();
+  if (temVoz) speechSynthesis.cancel();
+  let r;
+  try { r = new SR(); } catch (e) { P.fala.modoGravar = true; return iniciarGravacao(); }
+  rec = r; r.lang = 'en-US'; r.interimResults = true; r.maxAlternatives = 3; r.continuous = false;
+  P.fala.estado = 'ouvindo'; P.fala.t = ''; P.fala.erro = null; render();
+  r.onresult = e => {
+    let txt = '';
+    for (let i = 0; i < e.results.length; i++) { const res = e.results[i]; let best = res[0].transcript, bs = -1; for (let j = 0; j < res.length; j++) { const sc = pontuar(res[j].transcript, ex.c).score; if (sc > bs) { bs = sc; best = res[j].transcript; } } txt += ' ' + best; }
+    if (P.fala) { P.fala.t = txt.trim(); const el = document.getElementById('falaTxt'); if (el) el.textContent = P.fala.t || '...'; }
+  };
+  r.onerror = e => { if (P.fala) P.fala.erro = e.error; };
+  r.onend = () => { if (rec === r) rec = null; avaliarFala(); };
+  try { r.start(); } catch (e) { P.fala.estado = 'pronto'; render(); toast('Não consegui iniciar o microfone.'); return; }
+  setTimeout(() => { try { r.stop(); } catch (e) { /* ok */ } }, 8000);
+}
+function avaliarFala() {
+  const P = R.prat; if (!P || !P.fala || P.resp) return; const ex = P.fila[P.pos]; if (!ex || ex.t !== 'falar') return; const f = P.fala;
+  if (f.estado !== 'ouvindo') return;
+  if (!f.t) {
+    f.estado = 'pronto'; const e = f.erro; f.erro = null;
+    if (e === 'not-allowed' || e === 'service-not-allowed') { f.semPermissao = true; toast('O reconhecimento de voz não foi liberado. Dá pra usar a gravação no lugar.'); }
+    else if (e !== 'aborted') toast('Não ouvi nada. Toque e fale de novo, perto do microfone.');
+    render(); return;
+  }
+  f.tent++; const res = pontuar(f.t, ex.c); f.sc = res.score; f.marks = res.marks; f.estado = 'resultado';
+  if (passouFala(res.score, ex.c)) responder('__fala_ok__');
+  else if (f.tent >= 3) responder('__fala_erro__');
+  else { som(false); render(); }
+}
+async function iniciarGravacao() {
+  const P = R.prat; P.fala = P.fala || { tent: 0 }; P.fala.modoGravar = true;
+  if (!temGravador) { toast('Este aparelho não permite gravar pelo app.'); render(); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    pedacos = []; const g = new MediaRecorder(stream); gravador = g;
+    g.ondataavailable = e => { if (e.data && e.data.size) pedacos.push(e.data); };
+    g.onstop = () => { stream.getTracks().forEach(t => t.stop()); gravador = null; if (!P.fala) return; const blob = new Blob(pedacos, { type: g.mimeType || 'audio/mp4' }); if (P.fala.url) URL.revokeObjectURL(P.fala.url); P.fala.url = URL.createObjectURL(blob); P.fala.estado = 'gravado'; if (R.prat === P) render(); };
+    g.start(); P.fala.estado = 'gravando'; render();
+    setTimeout(() => { if (g.state === 'recording') g.stop(); }, 6000);
+  } catch (e) { P.fala.estado = 'pronto'; render(); toast('Não consegui acessar o microfone. Confira a permissão nos Ajustes do iPhone.'); }
+}
+function ouvirMinhaVoz() { const P = R.prat; if (P && P.fala && P.fala.url) { const a = new Audio(P.fala.url); a.play().catch(() => toast('Não consegui tocar a gravação.')); } }
+function pularFala() {
+  const P = R.prat; const f = P.fala; P.fala = null; pararMic();
+  const resto = P.fila.slice(P.pos);
+  const removidos = resto.filter(e => e.t === 'falar' && !e.retry).length;
+  P.fila = P.fila.slice(0, P.pos).concat(resto.filter(e => e.t !== 'falar')); P.total -= removidos; P.resp = null;
+  toast('Sem fala nesta sessão. Os exercícios de fala voltam na próxima.');
+  if (P.pos >= P.fila.length) return concluirPasso('prat');
+  render(); falarEx();
+}
 function exercicio(tipo, it, sIdx) {
   const pool = poolAte(sIdx);
   if (tipo === 'ouvir') {
@@ -273,6 +371,7 @@ function exercicio(tipo, it, sIdx) {
     return { t: 'montar', it, pecas: emb([...pal, ...extras]), c: it.en };
   }
   if (tipo === 'traduzir') return { t: 'traduzir', it, c: it.en };
+  if (tipo === 'falar') return { t: 'falar', it, c: it.en };
   return { t: 'escrever', it, c: it.en };
 }
 const perguntaEx = q => ({ t: 'escolha', q, op: emb(q.op), c: q.c });
@@ -295,6 +394,11 @@ function novaPratica(s) {
     const longas = emb(s.exObj.filter(e => nPal(e.en) >= 4 && nPal(e.en) <= 10));
     if (longas.length) ex.push(exercicio('montar', longas[0], idx));
   }
+  if (S.ajustes.fala !== false) {
+    const baseF = s.itensObj.length ? s.itensObj : anteriores;
+    const frasesF = emb(baseF.filter(it => nPal(it.en) >= 2 && nPal(it.en) <= 6)).concat(emb(baseF.filter(it => nPal(it.en) === 1)));
+    frasesF.slice(0, 2).forEach(it => ex.push(exercicio('falar', it, idx)));
+  }
   s.pergObj.forEach(q => ex.push(perguntaEx(q)));
   const nEsp = s.revisao || (idx >= 1 ? 3 : 0);
   sortearPeso(anteriores, nEsp, x => x.id).forEach(it => ex.push(exercicio(emb(['ouvir', 'significa', 'inverso'])[0], it, idx)));
@@ -302,7 +406,7 @@ function novaPratica(s) {
   if (s.perguntasRevisao) sortearPeso(pergAnt, s.perguntasRevisao, x => x.id).forEach(q => ex.push(perguntaEx(q)));
   else { const errQ = pergAnt.filter(q => S.erros[q.id] > 0); if (errQ.length) ex.push(perguntaEx(sortearPeso(errQ, 1, x => x.id)[0])); }
   // reconhecer primeiro, produzir depois
-  const peso = e => ({ ouvir: 0, significa: 0, inverso: 1, escolha: 1, montar: 2, escrever: 2, traduzir: 3 }[e.t] || 0) + Math.random() * 1.6;
+  const peso = e => ({ ouvir: 0, significa: 0, inverso: 1, escolha: 1, montar: 2, escrever: 2, falar: 2.5, traduzir: 3 }[e.t] || 0) + Math.random() * 1.6;
   const fila = ex.map(e => [peso(e), e]).sort((a, b) => a[0] - b[0]).map(x => x[1]);
   return { fila, pos: 0, total: fila.length, acertos: 0, erros: [], resp: null, monta: [], combo: 0, maxCombo: 0, flash: 0 };
 }
@@ -312,18 +416,20 @@ function enunciado(ex) {
   if (ex.t === 'significa') return ex.it.en;
   if (ex.t === 'escrever') return `Ditado: “${ex.it.en}”`;
   if (ex.t === 'traduzir') return `Escreva em inglês: ${ex.it.pt}`;
+  if (ex.t === 'falar') return `Fale: “${ex.it.en}”`;
   return ex.it.pt;
 }
 
 /* ---------- sessão ---------- */
-function passosDe(s, comRev) { return [...(comRev ? ['rev'] : []), ...(s.itensObj.length ? ['pal'] : []), 'dica', 'prat', ...(s.missao ? ['missao'] : []), 'fim']; }
+function passosDe(s, comRev) { return [...(comRev ? ['rev'] : []), ...(s.itensObj.length ? ['pal'] : []), 'dica', ...(s.dialogo ? ['dial'] : []), 'prat', ...(s.missao ? ['missao'] : []), 'fim']; }
 function iniciarSessao(sid, modo) {
   const s = SES[sid]; R.prat = null; R.rev = null; R.sheet = null; R.ultimo = Date.now();
   if (modo === 'refazer') {
-    R.ses = { sid, modo, passos: [...(s.itensObj.length ? ['pal'] : []), 'dica', 'prat', 'fim'], feitos: [], ms: 0, xp: 0, palIdx: 0 };
+    R.ses = { sid, modo, passos: [...(s.itensObj.length ? ['pal'] : []), 'dica', ...(s.dialogo ? ['dial'] : []), 'prat', 'fim'], feitos: [], ms: 0, xp: 0, palIdx: 0 };
   } else {
     if (!S.atual || S.atual.sid !== sid) S.atual = { sid, inicio: Date.now(), ms: 0, xp: 0, feitos: [], passos: passosDe(s, devidos().length > 0) };
     if (s.missao && !S.atual.passos.includes('missao')) S.atual.passos.splice(S.atual.passos.indexOf('fim'), 0, 'missao');
+    if (s.dialogo && !S.atual.passos.includes('dial') && !S.atual.feitos.includes('prat')) S.atual.passos.splice(S.atual.passos.indexOf('prat'), 0, 'dial');
     R.ses = { sid, modo: 'normal', palIdx: 0 };
   }
   R.view = 'sessao';
@@ -342,6 +448,7 @@ function entrarPasso() {
   if (p === 'pal') R.ses.palIdx = 0;
   if (p === 'prat') R.prat = novaPratica(s);
   if (p === 'missao') R.ses.verModelo = false;
+  if (p === 'dial') R.ses.dial = { fase: 'ouvir', ouviu: false, qi: 0, resp: null, acertos: 0, trad: false, ops: null };
 }
 function falarInicioPasso() {
   const p = passoAtual(); const s = SES[R.ses.sid];
@@ -399,7 +506,36 @@ function htmlChecks(s, texto) {
   return `<div class="mcount ${e.pronto ? 'ok' : ''}">${e.frases} de ${s.missao.min} frases</div>` + e.checks.map(c => `<div class="mchk ${c.ok ? 'ok' : ''}"><span>${c.ok ? IC.check : ''}</span>${esc(c.rot)}</div>`).join('') + `<div class="small muted">${e.completo ? `Todos os requisitos cumpridos: +${XPV.missaoCompleta} XP extra.` : `Cumprindo todos, ganha +${XPV.missaoCompleta} XP extra.`}</div>`;
 }
 function textoCorrecao(s, texto) {
-  return `Aside, corrige meu texto em inglês? Sou iniciante (mês 1 do Meu Inglês). Mostre os erros, explique em português e me dê a versão corrigida.\n\nMissão: ${s.missao.pedido}\n\nMeu texto:\n${texto.trim()}`;
+  return `Aside, corrige meu texto em inglês? Sou iniciante (Meu Inglês, sessão ${s.n}). Explique em português.\n\nResponda neste formato, pra eu colar no app:\nVersão corrigida: (o texto todo corrigido)\nErros:\n- errado → certo (regra curta em português)\n\nMissão: ${s.missao.pedido}\n\nMeu texto:\n${texto.trim()}`;
+}
+const limparAsp = s => String(s).replace(/^["“”'*_`\s]+|["“”'*_`\s]+$/g, '').trim();
+function lerCorrecao(txt) {
+  const corr = [], erros = []; let modo = null;
+  String(txt).split(/\r?\n/).forEach(l0 => {
+    const l = l0.trim(); if (!l) return;
+    const mC = l.match(/^[*_#\s]*vers[aã]o corrigida[*_\s]*:?[*_\s]*(.*)$/i);
+    if (mC) { modo = 'c'; if (mC[1].trim()) corr.push(mC[1].trim()); return; }
+    if (/^[*_#\s]*erros[*_\s]*:?[*_\s]*$/i.test(l)) { modo = 'e'; return; }
+    const mE = l.match(/^[-•*\d.)\s]*(.+?)\s*(?:→|->|=>)\s*(.+?)\s*(?:\(([^()]+)\))?\s*$/);
+    if (mE) { erros.push({ errado: limparAsp(mE[1]), certo: limparAsp(mE[2]), regra: (mE[3] || '').trim() }); modo = 'e'; return; }
+    if (modo === 'c') corr.push(l);
+  });
+  return { corrigido: corr.join(' ').replace(/\s+/g, ' ').trim(), erros };
+}
+function salvarCorrecao(i) {
+  const t = S.textos[i]; const txt = (document.getElementById('correcao') || {}).value || '';
+  if (!txt.trim()) { toast('Cole a resposta do Aside primeiro.'); return; }
+  const r = lerCorrecao(txt);
+  t.corrigido = r.corrigido || (r.erros.length ? '' : txt.trim()); t.erros = r.erros; t.corrEm = hoje();
+  let novos = 0;
+  r.erros.forEach(e => {
+    S.errosTexto.push(Object.assign({ sid: t.sid, em: hoje() }, e));
+    if (!e.certo) return;
+    const ja = Object.values(S.cards).some(c => c.own && norm(c.en) === norm(e.certo));
+    if (!ja) { S.cards['own-' + Date.now() + '-' + novos] = { box: 1, due: hoje(), ok: 0, err: 0, en: e.certo, pt: `em vez de “${e.errado}”${e.regra ? ' · ' + e.regra : ''}`, own: true, origem: 'texto', add: hoje() }; novos++; }
+  });
+  if (R.sheet) R.sheet.colar = false; salvar(); render();
+  toast(r.erros.length ? `Correção salva. ${novos === 1 ? '1 erro virou cartão' : novos + ' erros viraram cartões'} de revisão.` : 'Correção salva. Não achei a lista de erros no formato combinado, mas guardei o texto.');
 }
 async function copiar(txt) {
   try { await navigator.clipboard.writeText(txt); toast('Copiado! Cole no chat do Aside pra eu corrigir.'); }
@@ -468,10 +604,12 @@ function stat(tipo, ok) { const s = S.stats[tipo] || (S.stats[tipo] = { ok: 0, n
 function responder(valor) {
   const P = R.prat; const ex = P.fila[P.pos]; if (P.resp) return;
   let ok = false, quase = false;
-  if (ex.t === 'escrever' || ex.t === 'traduzir') { const r = confere(valor, ex.it); ok = r !== 'erro'; quase = (r === 'quase' || r === 'digitacao') ? r : false; }
+  if (ex.t === 'falar') ok = valor === '__fala_ok__' || valor === '__fala_aceita__';
+  else if (ex.t === 'escrever' || ex.t === 'traduzir') { const r = confere(valor, ex.it); ok = r !== 'erro'; quase = (r === 'quase' || r === 'digitacao') ? r : false; }
   else if (ex.t === 'montar') ok = norm(valor) === norm(ex.c);
   else ok = valor === ex.c;
   P.resp = { valor, ok, quase };
+  if (ex.t === 'falar') { P.resp.ouvido = (P.fala && P.fala.t) || ''; P.resp.aceita = valor === '__fala_aceita__'; P.resp.marks = P.fala && P.fala.marks; P.resp.gravado = !!(P.fala && P.fala.modoGravar); }
   const chave = ex.q ? ex.q.id : ex.it.id;
   if (ok) {
     P.combo++; P.maxCombo = Math.max(P.maxCombo, P.combo); S.melhorCombo = Math.max(S.melhorCombo || 0, P.combo);
@@ -480,7 +618,7 @@ function responder(valor) {
   } else {
     P.combo = 0; som(false);
     if (!ex.retry) {
-      P.erros.push({ tipo: ex.t, chave, pergunta: enunciado(ex), resposta: valor, certo: ex.c });
+      P.erros.push({ tipo: ex.t, chave, pergunta: enunciado(ex), resposta: ex.t === 'falar' ? (P.resp.ouvido || (P.resp.gravado ? '(você marcou “ainda não”)' : '(não reconhecido)')) : valor, certo: ex.c });
       S.erros[chave] = (S.erros[chave] || 0) + 1;
       if (ex.it && S.cards[ex.it.id]) { P.resp.cardAntes = Object.assign({}, S.cards[ex.it.id]); S.cards[ex.it.id].box = 1; S.cards[ex.it.id].due = addDias(hoje(), 1); }
     }
@@ -503,7 +641,7 @@ function minhaValeu() {
   salvar(); render();
 }
 function continuarEx() {
-  const P = R.prat; P.pos++; P.resp = null; P.monta = []; P.flash = 0;
+  const P = R.prat; P.fala = null; pararMic(); P.pos++; P.resp = null; P.monta = []; P.flash = 0;
   if (P.pos >= P.fila.length) return concluirPasso('prat');
   render(); window.scrollTo(0, 0); falarEx();
   const inp = document.getElementById('ditado'); if (inp) setTimeout(() => inp.focus(), 50);
@@ -537,6 +675,22 @@ function htmlPratica() {
     h += `<h3 class="q">Escreva o que você ouviu</h3>${audio(ex.it.en)}<div class="muted small center">${plural(nPal(ex.it.en), 'palavra', 'palavras')}${ehNum(ex.it) ? ' · pode usar número' : ''}</div>${campo('Digite aqui')}`;
     if (!resp) h += `<button class="btn" data-act="verificarDitado">Verificar</button>`;
   }
+  if (ex.t === 'falar') {
+    const f = P.fala || { tent: 0, estado: 'pronto' };
+    h += `<h3 class="q">Fale em inglês</h3><div class="en mid">${esc(ex.it.en)}</div><div class="muted small center">${esc(ex.it.pt)}</div>${audio(ex.it.en)}`;
+    if (!resp) {
+      const gravar = !SR || f.modoGravar;
+      if (f.estado === 'ouvindo') h += `<div class="micbox"><button class="mic on" data-act="pararMic" aria-label="Parar">${IC.mic}</button><div class="small">Ouvindo... fale a frase</div><div class="ouvido" id="falaTxt">${esc(f.t || '...')}</div></div>`;
+      else if (f.estado === 'gravando') h += `<div class="micbox"><button class="mic on" data-act="pararGravacao" aria-label="Parar">${IC.stop}</button><div class="small">Gravando... fale a frase e toque pra parar</div></div>`;
+      else if (f.estado === 'gravado') h += `<div class="micbox"><div class="duo"><button class="btn sec" data-act="ouvirMinha">${IC.play} Minha voz</button><button class="btn sec" data-act="falar" data-t="${esc(ex.it.en)}">${IC.som} O modelo</button></div><p class="small muted">Compare as duas. Ficou parecido?</p><div class="duo"><button class="btn bad" data-act="falaAindaNao">Ainda não</button><button class="btn good" data-act="falaParecido">Ficou parecido</button></div><button class="chip" data-act="falarMic">Gravar de novo</button></div>`;
+      else {
+        if (f.estado === 'resultado') h += `<div class="falares"><div class="small muted">Entendi:</div><div class="ouvido">“${esc(f.t)}”</div><div class="marks">${(f.marks || []).map(m => `<span class="${m.ok ? 'ok' : 'no'}">${esc(m.w)}</span>`).join(' ')}</div><div class="small muted">Tentativa ${f.tent} de 3. As palavras em vermelho não foram reconhecidas: ouça o modelo e tente de novo.</div></div>`;
+        h += `<div class="micbox"><button class="mic" data-act="falarMic" aria-label="Falar">${IC.mic}</button><div class="small">${gravar ? 'Toque pra gravar sua voz' : f.estado === 'resultado' ? 'Toque e tente de novo' : 'Toque, fale a frase e espere'}</div></div>`;
+        h += `<div class="center">${f.estado === 'resultado' ? '<button class="chip" data-act="falaAceita">Falei certo, o reconhecimento errou</button> ' : ''}${SR && !f.modoGravar && f.semPermissao ? '<button class="chip" data-act="modoGravar">Usar gravação no lugar</button>' : ''}</div>`;
+      }
+      h += `<div class="center"><button class="chip ghost" data-act="pularFala">Agora não posso falar</button></div>`;
+    }
+  }
   if (ex.t === 'traduzir') {
     h += `<h3 class="q">Escreva em inglês</h3><div class="pt big">${esc(ex.it.pt)}</div><div class="muted small center">${plural(nPal(ex.it.en), 'palavra', 'palavras')} · sem pressa, pense na estrutura</div>${campo('Digite em inglês')}`;
     if (!resp) h += `<button class="btn" data-act="verificarDitado">Verificar</button>`;
@@ -557,7 +711,10 @@ function htmlPratica() {
       }
       fb += `<div class="small muted">${ex.t === 'escolha' ? 'Essa volta no fim da prática e nas próximas sessões.' : 'Essa volta no fim da prática e na revisão de amanhã.'}</div>`;
       if (ex.t === 'traduzir') fb += `<button class="chip" data-act="valeu">Minha resposta também está certa</button>`;
+      if (ex.t === 'falar' && resp.ouvido) fb += `<div class="small">Entendi: “${esc(resp.ouvido)}”</div><div class="marks">${(resp.marks || []).map(m => `<span class="${m.ok ? 'ok' : 'no'}">${esc(m.w)}</span>`).join(' ')}</div>`;
     }
+    if (ex.t === 'falar' && resp.ok && resp.ouvido && !resp.aceita) fb += `<div class="small">Entendi: “${esc(resp.ouvido)}”</div>`;
+    if (ex.t === 'falar' && resp.aceita) fb += `<div class="small muted">Ok, contei como certa. O reconhecimento de voz erra às vezes, principalmente no começo.</div>`;
     if (ex.t === 'escolha' && ex.q.pq) fb += `<div class="why">${esc(ex.q.pq)}</div>`;
     if (ex.it && ex.it.d && !resp.ok) fb += `<div class="why">${esc(ex.it.d)}</div>`;
     if (ex.it && ex.t !== 'escolha') fb += `<div class="small muted">${esc(ex.it.en)} = ${esc(ex.it.pt)}</div>`;
@@ -568,7 +725,29 @@ function htmlPratica() {
 }
 
 /* ---------- tela da sessão ---------- */
-const NOMES_PASSO = { rev: 'Revisão', pal: 'Palavras', dica: 'Entenda', prat: 'Pratique', missao: 'Missão', fim: 'Resumo' };
+const NOMES_PASSO = { rev: 'Revisão', pal: 'Palavras', dica: 'Entenda', dial: 'Escute', prat: 'Pratique', missao: 'Missão', fim: 'Resumo' };
+function htmlDialogo(s) {
+  const d = s.dialogo; const D = R.ses.dial || (R.ses.dial = { fase: 'ouvir', ouviu: false, qi: 0, resp: null, acertos: 0, trad: false, ops: null });
+  const ctrl = grande => `<div class="row c"><button class="spk ${grande ? 'lg' : ''}" data-act="tocarDial" aria-label="Ouvir a conversa">${IC.play}</button><button class="chip" data-act="tocarDialLento">Devagar</button><button class="chip" data-act="pararVoz">${IC.stop} Parar</button></div>`;
+  let h = '';
+  if (D.fase === 'ouvir') {
+    h += `<div class="card dialc"><div class="lbl">${IC.som} Escute · conversa da semana</div><h2>${esc(d.titulo)}</h2><p>${esc(d.contexto)}</p><p class="small muted">Primeiro só ouça, sem ler. Pode ouvir quantas vezes quiser. Não precisa entender tudo: tente pegar a ideia.</p>${ctrl(true)}<div class="small muted center">${esc(d.nomes[0])} e ${esc(d.nomes[1])} · ${d.falas.length} falas</div></div>`;
+    h += `<button class="btn" data-act="dialPerguntas" ${D.ouviu ? '' : 'disabled'}>Responder perguntas</button>${D.ouviu ? '' : '<p class="small muted center">Ouça a conversa pelo menos uma vez pra liberar.</p>'}`;
+  }
+  if (D.fase === 'perg') {
+    const q = d.perguntas[D.qi]; if (!D.ops) D.ops = emb(q[1]);
+    const certo = q[1][q[2]];
+    h += `<div class="pbar"><i style="width:${Math.round(D.qi / d.perguntas.length * 100)}%"></i></div><div class="muted small center">Pergunta ${D.qi + 1} de ${d.perguntas.length} · pode ouvir de novo</div>${ctrl(false)}<div class="enun">${esc(q[0])}</div>`;
+    h += D.ops.map(o => { let c = 'opt'; if (D.resp) { if (o === certo) c += ' ok'; else if (o === D.resp) c += ' err'; else c += ' dim'; } return `<button class="${c}" data-act="dialResp" data-v="${esc(o)}" ${D.resp ? 'disabled' : ''}>${esc(o)}</button>`; }).join('');
+    if (D.resp) { const ok = D.resp === certo; h += `<div class="fb ${ok ? 'ok' : 'err'}"><b>${ok ? 'Isso!' : 'Não foi dessa vez.'}</b>${ok ? ` <span class="xpchip">+${XPV.dialogo} XP</span>` : ` O certo é: <div class="certo">${esc(certo)}</div>`}<div class="why">${esc(q[3])}</div><button class="btn" data-act="dialProx">${D.qi + 1 < d.perguntas.length ? 'Próxima pergunta' : 'Ver a conversa escrita'}</button></div>`; }
+  }
+  if (D.fase === 'texto') {
+    h += `<div class="card"><div class="row"><div class="grow"><div class="lbl">Agora leia e ouça</div><b>${esc(d.titulo)}</b></div><button class="chip ${D.trad ? 'on' : ''}" data-act="dialTrad">${D.trad ? 'Esconder tradução' : 'Mostrar tradução'}</button></div>${ctrl(false)}`;
+    h += d.falas.map(([q, en, pt], i) => `<div class="dl q${q}"><button class="spk" data-act="dialLinha" data-i="${i}" aria-label="Ouvir">${IC.som}</button><div class="grow"><div class="dn">${esc(d.nomes[q])}</div><div class="en sm">${esc(en)}</div>${D.trad ? `<div class="small muted">${esc(pt)}</div>` : ''}</div></div>`).join('');
+    h += `</div><p class="small muted">Você acertou ${D.acertos} de ${d.perguntas.length}. Agora ouça cada fala e repita em voz alta, imitando o ritmo.</p><button class="btn" data-act="dialFim">Concluir conversa (+${XPV.dialogoFim} XP)</button>`;
+  }
+  return h;
+}
 function htmlSessao() {
   const s = SES[R.ses.sid]; const c = ctx(); const p = passoAtual();
   let h = `<div class="shead"><button class="icon" data-act="sair" aria-label="Sair">${IC.x}</button><div class="grow"><div class="muted small">Sessão ${s.n} · Semana ${s.semana}${R.ses.modo === 'refazer' ? ' · praticando de novo' : ''}</div><b>${esc(s.titulo)}</b></div><span class="xpchip big">${c.xp || 0} XP</span></div>`;
@@ -584,6 +763,7 @@ function htmlSessao() {
     h += htmlDica(s);
     h += `<button class="btn" data-act="dicaOk">Entendi, vamos praticar</button>`;
   }
+  if (p === 'dial') h += htmlDialogo(s);
   if (p === 'prat') h += htmlPratica();
   if (p === 'missao') {
     const m = s.missao; const txt = c.rascunho || '';
@@ -593,7 +773,7 @@ function htmlSessao() {
     h += `<div class="card" id="mchecks">${htmlChecks(s, txt)}</div>`;
     h += `<div class="duo"><button class="btn sec" data-act="verModelo">${R.ses.verModelo ? 'Esconder exemplo' : 'Ver um exemplo'}</button><button class="btn sec" data-act="copiarTexto">${IC.copiar} Copiar pra correção</button></div>`;
     if (R.ses.verModelo) h += `<div class="card"><div class="lbl">Exemplo (não precisa ser igual)</div><div class="row">${btnSom(m.modelo)}<div class="en sm">${esc(m.modelo)}</div></div></div>`;
-    h += `<button class="btn" data-act="concluirMissao" id="btnMissao" ${estadoMissao(s, txt).pronto ? '' : 'disabled'}>Concluir missão</button>`;
+    h += `<button class="btn" data-act="concluirMissao" id="btnMissao" ${estadoMissao(s, txt).pronto ? '' : 'disabled'}>Concluir missão</button><p class="small muted">Quer correção? Copie e mande pro Aside. Quando eu responder, cole a correção em Trilha > Meus textos: os erros viram cartões de revisão.</p>`;
   }
   if (p === 'fim') {
     const res = c.res || { acertos: 0, total: 0, erros: [] };
@@ -663,6 +843,8 @@ function htmlHoje() {
   x += `<div class="card row">${anel(feitas / SESSOES.length, 78)}<div class="grow"><div class="lbl">Mês 1</div><b>${feitas} de ${SESSOES.length} sessões</b><div class="muted small">Semana ${semAtual} de 4${prox && dataPlanejada(prox.idx) < h && !(S.atual && S.atual.sid === prox.id) ? ' · um pouco atrás, tudo bem' : ' · no ritmo'}</div></div></div>`;
   const ac = acertoGeral();
   x += `<div class="stats three"><div><b>${minSemana()}</b><span>min na semana</span></div><div><b>${nCards()}</b><span>palavras</span></div><div><b>${ac == null ? '–' : ac + '%'}</b><span>de acerto</span></div></div>`;
+  const diasBk = S.ultimoBackup ? Math.round((pd(h) - pd(S.ultimoBackup)) / 864e5) : 999;
+  if (Object.keys(S.feitas).length >= 5 && diasBk >= 30) x += `<div class="card note"><div class="row"><div class="grow"><b>Hora do backup do mês</b><div class="small muted">Seu progresso fica só neste aparelho. Guarde uma cópia no Arquivos ou no e-mail.</div></div><button class="btn sm" data-act="exportar">Exportar</button></div></div>`;
   if (due > 0 && (jaFez || fds(h) || !prox)) x += `<div class="card"><div class="row"><div class="grow"><b>Revisão rápida</b><div class="muted small">${plural(due, 'cartão', 'cartões')} no dia de revisar. Opcional, +${XPV.cartao} XP por acerto.</div></div><button class="btn sm" data-act="revisar">Revisar</button></div></div>`;
   const fracos = Object.entries(S.erros).filter(([id, n]) => n > 0 && (ITENS[id] || S.cards[id])).sort((a, b) => b[1] - a[1]).slice(0, 3);
   if (fracos.length) x += `<div class="card"><div class="lbl">Pra reforçar</div>${fracos.map(([id, n]) => { const ci = ITENS[id] || cardInfo(id); return `<div class="exl">${btnSom(ci.en)}<div class="grow"><div class="en sm">${esc(ci.en)}</div><div class="muted small">${esc(ci.pt)}</div></div><span class="tag">${n}x</span></div>`; }).join('')}</div>`;
@@ -743,7 +925,7 @@ function htmlProgresso() {
   } else x += `<div class="card"><div class="lbl">Acerto de primeira por sessão</div><p class="small muted">O gráfico aparece depois de 2 sessões.</p></div>`;
   // habilidades
   const hab = {}; Object.entries(S.stats).forEach(([t, v]) => { const k = HAB[t]; if (!k) return; hab[k] = hab[k] || { ok: 0, n: 0 }; hab[k].ok += v.ok; hab[k].n += v.n; });
-  const ordem = ['Ouvir', 'Entender', 'Gramática', 'Formar frases'];
+  const ordem = ['Ouvir', 'Entender', 'Gramática', 'Formar frases', 'Falar'];
   const comDados = ordem.filter(k => hab[k] && hab[k].n >= 5);
   const ordenado = comDados.slice().sort((a, b) => hab[a].ok / hab[a].n - hab[b].ok / hab[b].n);
   const pct = k => hab[k].ok / hab[k].n;
@@ -752,6 +934,8 @@ function htmlProgresso() {
   x += `<div class="card"><div class="lbl">Acerto por habilidade</div>${ordem.map(k => { const v = hab[k]; const p = v && v.n ? Math.round(v.ok / v.n * 100) : null; return `<div class="sk"><span>${k}</span><div class="pbar thin"><i class="${p != null && p < 75 ? 'w' : ''}" style="width:${p || 0}%"></i></div><span class="small ${p == null ? 'muted' : ''}">${p == null ? '–' : p + '%'}</span></div>`; }).join('')}<p class="small muted">${pior ? `Seu ponto mais fraco agora: <b>${pior}</b>. As próximas revisões já dão mais peso pro que você erra.` : equilibrado ? 'Tudo equilibrado até agora. Quando uma habilidade ficar pra trás, ela aparece aqui.' : 'Começa a contar a partir desta versão do app. Com algumas sessões, aparece seu ponto mais fraco.'}</p></div>`;
   const fracos = Object.entries(S.erros).filter(([id, n]) => n > 0 && (ITENS[id] || S.cards[id])).sort((a, b) => b[1] - a[1]).slice(0, 5);
   if (fracos.length) x += `<div class="card"><div class="lbl">Pra reforçar</div>${fracos.map(([id, n]) => { const ci = ITENS[id] || cardInfo(id); return `<div class="exl">${btnSom(ci.en)}<div class="grow"><div class="en sm">${esc(ci.en)}</div><div class="muted small">${esc(ci.pt)}</div></div><span class="tag">${n}x</span></div>`; }).join('')}</div>`;
+  const et = S.errosTexto.slice(-8).reverse();
+  x += `<div class="card"><div class="lbl">Erros que eu repito (dos seus textos)</div>${et.length ? et.map(e => `<div class="exl">${btnSom(e.certo)}<div class="grow"><div class="small"><span class="bad-t">${esc(e.errado)}</span> → <span class="good-t">${esc(e.certo)}</span></div>${e.regra ? `<div class="small muted">${esc(e.regra)}</div>` : ''}</div></div>`).join('') : '<p class="small muted">Quando você colar uma correção minha em Trilha > Meus textos, os erros aparecem aqui e viram cartões de revisão.</p>'}</div>`;
   // conquistas
   const nc = CONQ.filter(c => S.conquistas[c.id]).length;
   x += `<h2 class="sec">${IC.medalha} Conquistas <span class="muted small">${nc} de ${CONQ.length}</span></h2><div class="badges">${CONQ.map(c => { const ok = S.conquistas[c.id]; return `<div class="badge ${ok ? 'ok' : ''}"><span class="bi">${ok ? IC.medalha : IC.cadeado}</span><b>${esc(c.t)}</b><small>${ok ? `em ${fmtDM(ok)}` : esc(c.d)}</small></div>`; }).join('')}</div>`;
@@ -812,6 +996,7 @@ function htmlAjustes() {
   x += `<div class="card"><div class="lbl">Lembrete de manhã</div><p class="small muted">Cria um evento de segunda a sexta, a partir de ${fmtCurta(CURSO.inicio)}, com alarme na hora. Depois de adicionar, dá pra mudar no próprio calendário.</p><select class="inp" data-set="lembrete">${HORARIOS.map(([v, t]) => `<option value="${v}" ${a.lembrete === v ? 'selected' : ''}>${t}</option>`).join('')}</select><a class="btn sec" href="lembretes/sessao-${a.lembrete}.ics">Adicionar ao calendário</a><p class="small muted">No iPhone, se nada acontecer pelo app instalado, abra este mesmo endereço no Safari e toque de novo.</p></div>`;
   x += `<div class="card"><div class="lbl">Voz</div>${vozes.length ? `<select class="inp" data-set="voz">${vozes.map(v => `<option value="${esc(v.name)}" ${va && va.name === v.name ? 'selected' : ''}>${esc(v.name)} (${esc(v.lang)})</option>`).join('')}</select>` : (temVoz && speechSynthesis.getVoices().length ? '<p class="small tip">Este aparelho não tem voz em inglês instalada, então o áudio pode sair com sotaque errado. No iPhone já vem instalada. No Windows: Configurações > Hora e idioma > Fala > Adicionar vozes > Inglês (Estados Unidos).</p>' : '<p class="small muted">Carregando vozes...</p>')}<select class="inp" data-set="rate">${[[0.8, 'Mais lenta'], [0.9, 'Normal (recomendado)'], [1, 'Natural']].map(([v, t]) => `<option value="${v}" ${Number(a.rate) === v ? 'selected' : ''}>${t}</option>`).join('')}</select><button class="btn sec" data-act="testarVoz">Testar voz</button><p class="small muted">Dica pro iPhone: em Ajustes > Acessibilidade > Conteúdo Falado > Vozes > Inglês, dá pra baixar vozes melhores. Depois elas podem aparecer nesta lista. Se não sair som, confira o modo silencioso.</p></div>`;
   x += `<div class="card"><label class="sw"><input type="checkbox" data-set="sons" ${a.sons ? 'checked' : ''}><span>Sons de acerto, combo e comemoração</span></label></div>`;
+  x += `<div class="card"><label class="sw"><input type="checkbox" data-set="fala" ${a.fala !== false ? 'checked' : ''}><span>Exercícios de fala com microfone</span></label><p class="small muted">${SR ? 'Este aparelho tem reconhecimento de voz: você fala e o app mostra o que entendeu.' : temGravador ? 'Aqui não tem reconhecimento de voz, então o app grava sua voz pra você comparar com o modelo.' : 'Este aparelho não permite usar o microfone pelo app.'} No iPhone, se o reconhecimento não funcionar, pode ser preciso ativar o ditado em Ajustes > Geral > Teclado.</p></div>`;
   x += `<div class="card"><div class="lbl">Instalar no iPhone</div><p class="small">1. Abra este endereço no <b>Safari</b>.<br>2. Toque em <b>Compartilhar</b> (quadrado com a seta).<br>3. Toque em <b>Adicionar à Tela de Início</b> e depois em <b>Adicionar</b>.</p><p class="small muted">Depois disso, use sempre pelo ícone. O app funciona sem internet. O progresso do app instalado fica separado do Safari.</p></div>`;
   x += `<div class="card"><div class="lbl">Backup</div><p class="small muted">Seus dados ficam só neste aparelho. Faça um backup de vez em quando (por exemplo, todo fim de mês) e guarde no Arquivos ou no seu e-mail.</p><div class="duo"><button class="btn sec" data-act="exportar">Exportar</button><button class="btn sec" data-act="importar">Importar</button></div><input type="file" id="arqImport" accept=".json,application/json" hidden></div>`;
   x += `<div class="card"><div class="lbl">Sobre</div><p class="small">Meu Inglês · ${VERSAO}</p><p class="small muted">Nada é enviado pra internet: o app só guarda seu progresso neste aparelho. Os links de bônus abrem sites externos.</p><button class="chip danger" data-act="apagarTudo">Apagar todo o progresso</button></div>`;
@@ -853,7 +1038,11 @@ function htmlSheet() {
   if (sh.tipo === 'dica') { const s = SES[sh.sid]; corpo = `<div class="lbl">Caderno · Sessão ${s.n}</div>${htmlDica(s)}`; }
   if (sh.tipo === 'texto') {
     const t = S.textos[sh.i]; const s = SES[t.sid];
-    corpo = `<div class="lbl">Missão · ${fmtCurta(t.em.slice(0, 10))}</div><h2>${esc(s.missao.titulo)}</h2><p class="small muted">${esc(s.missao.pedido)}</p><div class="card"><div class="lbl">Seu texto</div><p class="en sm pre">${esc(t.texto)}</p><button class="chip" data-act="falar" data-t="${esc(t.texto)}">${IC.som} Ouvir</button></div><div class="card"><div class="lbl">Exemplo</div><p class="en sm">${esc(s.missao.modelo)}</p></div><button class="btn sec" data-act="copiarSalvo" data-i="${sh.i}">${IC.copiar} Copiar pra correção</button>`;
+    corpo = `<div class="lbl">Missão · ${fmtCurta(t.em.slice(0, 10))}</div><h2>${esc(s.missao.titulo)}</h2><p class="small muted">${esc(s.missao.pedido)}</p><div class="card"><div class="lbl">Seu texto</div><p class="en sm pre">${esc(t.texto)}</p><button class="chip" data-act="falar" data-t="${esc(t.texto)}">${IC.som} Ouvir</button></div>`;
+    const temCorr = t.corrigido || (t.erros && t.erros.length);
+    if (temCorr) corpo += `<div class="card corr"><div class="lbl">Versão corrigida</div>${t.corrigido ? `<p class="en sm pre">${esc(t.corrigido)}</p><button class="chip" data-act="falar" data-t="${esc(t.corrigido)}">${IC.som} Ouvir</button>` : ''}${(t.erros || []).length ? `<div class="lbl" style="margin-top:14px">Erros (${t.erros.length})</div>${t.erros.map(e => `<div class="errl"><div><span class="bad-t">${esc(e.errado)}</span> → <span class="good-t">${esc(e.certo)}</span></div>${e.regra ? `<div class="small muted">${esc(e.regra)}</div>` : ''}</div>`).join('')}` : ''}</div>${sh.colar ? '' : `<button class="chip" data-act="colarDeNovo">Colar outra correção</button>`}`;
+    if (!temCorr || sh.colar) corpo += `<div class="card"><div class="lbl">Correção do Aside</div><p class="small muted">1. Toque em <b>Copiar pra correção</b> e cole no chat do Aside.<br>2. Copie a minha resposta inteira e cole aqui embaixo. Os erros viram cartões de revisão.</p><button class="btn sec" data-act="copiarSalvo" data-i="${sh.i}">${IC.copiar} Copiar pra correção</button><textarea id="correcao" class="inp area" rows="6" placeholder="Cole aqui a resposta do Aside"></textarea><button class="btn" data-act="salvarCorrecao" data-i="${sh.i}">Salvar correção</button></div>`;
+    corpo += `<div class="card"><div class="lbl">Exemplo</div><p class="en sm">${esc(s.missao.modelo)}</p></div>`;
   }
   if (sh.tipo === 'palavra') corpo = sheetPalavra(sh.id);
   if (sh.tipo === 'nova') corpo = sheetNovaPalavra();
@@ -907,6 +1096,26 @@ document.addEventListener('click', e => {
     case 'verificarDitado': { const v = (document.getElementById('ditado') || {}).value || ''; if (!v.trim()) { toast('Escreva sua resposta primeiro.'); break; } responder(v); break; }
     case 'continuar': continuarEx(); break;
     case 'valeu': minhaValeu(); break;
+    case 'falarMic': iniciarMic(); break;
+    case 'pararMic': if (rec) { try { rec.stop(); } catch (err) { /* ok */ } } break;
+    case 'pararGravacao': if (gravador && gravador.state === 'recording') gravador.stop(); break;
+    case 'modoGravar': if (R.prat.fala) R.prat.fala.modoGravar = true; iniciarGravacao(); break;
+    case 'ouvirMinha': ouvirMinhaVoz(); break;
+    case 'falaParecido': responder('__fala_ok__'); break;
+    case 'falaAindaNao': responder('__fala_erro__'); break;
+    case 'falaAceita': responder('__fala_aceita__'); break;
+    case 'pularFala': pularFala(); break;
+    case 'tocarDial': tocarDialogo(s.dialogo, false); if (R.ses.dial && !R.ses.dial.ouviu) { R.ses.dial.ouviu = true; render(); } break;
+    case 'tocarDialLento': tocarDialogo(s.dialogo, true); if (R.ses.dial && !R.ses.dial.ouviu) { R.ses.dial.ouviu = true; render(); } break;
+    case 'pararVoz': pararVoz(); break;
+    case 'dialPerguntas': pararVoz(); Object.assign(R.ses.dial, { fase: 'perg', qi: 0, resp: null, ops: null }); render(); window.scrollTo(0, 0); break;
+    case 'dialResp': { const D = R.ses.dial; if (D.resp) break; const q = s.dialogo.perguntas[D.qi]; D.resp = el.dataset.v; const ok = D.resp === q[1][q[2]]; if (ok) { D.acertos++; ganharXP(XPV.dialogo); } stat('dialogo', ok); som(ok); salvar(); render(); break; }
+    case 'dialProx': { const D = R.ses.dial; D.qi++; D.resp = null; D.ops = null; if (D.qi >= s.dialogo.perguntas.length) D.fase = 'texto'; render(); window.scrollTo(0, 0); break; }
+    case 'dialTrad': R.ses.dial.trad = !R.ses.dial.trad; render(); break;
+    case 'dialLinha': falarLinha(s.dialogo, Number(el.dataset.i)); break;
+    case 'dialFim': pararVoz(); ganharXP(XPV.dialogoFim); concluirPasso('dial'); break;
+    case 'salvarCorrecao': salvarCorrecao(Number(el.dataset.i)); break;
+    case 'colarDeNovo': R.sheet.colar = true; render(); break;
     case 'verModelo': { const t = document.getElementById('texto'); if (t) S.atual.rascunho = t.value; R.ses.verModelo = !R.ses.verModelo; salvar(); render(); break; }
     case 'copiarTexto': { const t = (document.getElementById('texto') || {}).value || ''; if (!t.trim()) { toast('Escreva o texto primeiro.'); break; } copiar(textoCorrecao(s, t)); break; }
     case 'copiarSalvo': { const t = S.textos[Number(el.dataset.i)]; copiar(textoCorrecao(SES[t.sid], t.texto)); break; }
@@ -961,6 +1170,7 @@ document.addEventListener('change', e => {
   const k = e.target.dataset && e.target.dataset.set;
   if (k) {
     if (k === 'sons') S.ajustes.sons = e.target.checked;
+    else if (k === 'fala') S.ajustes.fala = e.target.checked;
     else if (k === 'rate') S.ajustes.rate = Number(e.target.value);
     else S.ajustes[k] = e.target.value;
     salvar(); if (k !== 'nome') render(); toast('Salvo.');
@@ -984,9 +1194,10 @@ async function exportar() {
   const movel = /iphone|ipad|ipod|android/i.test(navigator.userAgent);
   try {
     const f = new File([blob], nome, { type: 'application/json' });
-    if (movel && navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f], title: 'Backup Meu Inglês' }); return; }
+    if (movel && navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f], title: 'Backup Meu Inglês' }); S.ultimoBackup = hoje(); salvar(); render(); return; }
   } catch (err) { if (err && err.name === 'AbortError') return; }
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nome; document.body.appendChild(a); a.click();
+  S.ultimoBackup = hoje(); salvar(); render();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
 }
 
@@ -997,5 +1208,5 @@ salvar();
 render();
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
-window.__mi = { S: () => S, R, SES, ITENS, devidos, novaPratica, confere, nivelDe, CONQ };
+window.__mi = { S: () => S, R, SES, ITENS, devidos, novaPratica, confere, nivelDe, CONQ, lerCorrecao, simularFala: t => { const P = R.prat; if (!P) return; P.fala = P.fala || { tent: 0 }; P.fala.estado = 'ouvindo'; P.fala.t = t; avaliarFala(); } };
 })();

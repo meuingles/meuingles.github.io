@@ -173,7 +173,11 @@ const CURSO = {
         ["They ___ happy.", ["are", "is", "am"], 0, "They (eles/elas) usa are."],
         ["“Está frio hoje”:", ["It's cold today.", "Is cold today.", "Cold is today."], 0, "A frase precisa de sujeito. Pra tempo, usa it: It's cold."],
         ["You ___ Brazilian.", ["are", "is", "am"], 0, "You usa are, tanto pra “você” quanto pra “vocês”."]
-      ] },
+      ],
+      missao: { titulo: "Se apresente", pedido: "Escreva 3 frases se apresentando: seu nome, de onde você é e como você está hoje.", min: 3,
+        base: [["My name is ...", "Meu nome é ..."], ["I'm from ...", "Eu sou de ..."], ["I'm happy today.", "Hoje eu estou feliz."], ["I'm tired today.", "Hoje eu estou cansado."]],
+        checklist: [["Disse seu nome", /\b(my name is|i'm|i am)\b/], ["Disse de onde é", /\bfrom\b/], ["Disse como está (happy, tired, fine...)", /\b(happy|tired|fine|good|ok|okay|cold)\b/]],
+        modelo: "Hi! My name is Ana. I'm from Brazil. I'm happy today." } },
 
     /* ---------------- SEMANA 2 ---------------- */
     { id: "s6", semana: 2, titulo: "Família e pessoas", resumo: "Família, amigos e meu/seu/dele/dela",
@@ -312,7 +316,11 @@ const CURSO = {
         "<b>3. Sem “i” no final.</b> O português coloca um “i” depois de consoante: “gudi”, “buki”, “bigui”. Em inglês a palavra termina seca: <b>good</b>, <b>book</b>, <b>big</b>.",
         "Hoje a prática mistura tudo das duas primeiras semanas. Se errar, ótimo: é assim que a gente descobre o que reforçar."],
         ex: [["I think this is good.", "Eu acho que isso é bom."], ["That is a big house.", "Aquela é uma casa grande."], ["Thank you for the book.", "Obrigado pelo livro."]] },
-      perguntas: [] },
+      perguntas: [],
+      missao: { titulo: "Sua família e seu trabalho", pedido: "Escreva 4 frases: alguém da sua família, quantos anos você tem, o que você faz e uma frase com “not”.", min: 4,
+        base: [["I have one brother.", "Eu tenho um irmão."], ["His name is ... / Her name is ...", "O nome dele é ... / O nome dela é ..."], ["I'm ... years old.", "Eu tenho ... anos."], ["I work in ... / I'm a ...", "Eu trabalho com ... / Eu sou ..."], ["I'm not tired.", "Eu não estou cansado."]],
+        checklist: [["Falou de alguém da família", /\b(mother|father|brother|sister|son|daughter|parents|family|mom|dad|wife|husband|girlfriend|boyfriend|friend)\b/], ["Disse a idade", /years old|\bi'?m (\d+|twenty|thirty|forty|fifty|sixty)/], ["Falou do trabalho", /\b(work|job|company|office|team|teacher|engineer|student|boss)\b/], ["Usou uma negativa", /\bnot\b|n't\b/]],
+        modelo: "I have one sister. Her name is Julia. I'm thirty years old. I work in customer support. I'm not tired today." } },
 
     /* ---------------- SEMANA 3 ---------------- */
     { id: "s11", semana: 3, titulo: "Dias da semana", resumo: "Hoje, amanhã, ontem e on Monday",
@@ -456,7 +464,11 @@ const CURSO = {
         ["Where ___ you work?", ["do", "does", "are"], 0, "Where + do + you."],
         ["Does he ___ coffee?", ["drink", "drinks", "drinking"], 0, "Depois de does, verbo sem -s."],
         ["What time ___ she wake up?", ["does", "do", "is"], 0, "She usa does."]
-      ] },
+      ],
+      missao: { titulo: "Sua rotina", pedido: "Escreva 5 frases sobre a sua rotina, com horários. Inclua uma frase sobre outra pessoa (he/she), com o -s no verbo.", min: 5,
+        base: [["I wake up at seven.", "Eu acordo às sete."], ["I have lunch at noon.", "Eu almoço ao meio-dia."], ["I go to work at eight thirty.", "Eu vou pro trabalho às oito e meia."], ["On Saturday, I don't work.", "No sábado, eu não trabalho."], ["My mother works in an office.", "Minha mãe trabalha num escritório."]],
+        checklist: [["Usou horário com at", /\bat (\d|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|noon|night)/], ["Usou um verbo da rotina", /wake up|get up|take a shower|have (breakfast|lunch|dinner)|go to (work|bed)|go home|study/], ["Falou de um dia da semana", /monday|tuesday|wednesday|thursday|friday|saturday|sunday|weekend/], ["Frase com he/she e -s no verbo", /\b(he|she|my \w+) (?!is\b)\w+s\b/]],
+        modelo: "I wake up at seven. I take a shower and I have breakfast. I go to work at eight thirty. On Saturday, I don't work. My mother works in an office." } },
 
     /* ---------------- SEMANA 4 ---------------- */
     { id: "s16", semana: 4, titulo: "Comida e bebida", resumo: "Fome, sede e o que você come",
@@ -582,6 +594,10 @@ const CURSO = {
         "No final você vê quanto acertou de primeira e o que ainda vale reforçar. Errar aqui é bom: mostra o caminho do mês 2.",
         "No mês 2 entram: passado (o que você fez ontem), mais perguntas do dia a dia e, se quiser, a primeira gravação de 3 frases que você já treinou."],
         ex: [["I study English every day.", "Eu estudo inglês todo dia."], ["I don't understand. Can you repeat that, please?", "Não estou entendendo. Pode repetir, por favor?"], ["See you next month!", "Até o mês que vem!"]] },
-      perguntas: [] }
+      perguntas: [],
+      missao: { titulo: "Sua casa e sua comida", pedido: "Escreva 5 frases: como é a sua casa (ou a casa dos sonhos), usando there is/are e um adjetivo antes da coisa, e do que você gosta de comer ou beber.", min: 5,
+        base: [["I live in a small apartment.", "Eu moro num apartamento pequeno."], ["There is a big kitchen.", "Tem uma cozinha grande."], ["There are two white chairs.", "Tem duas cadeiras brancas."], ["I like rice and beans.", "Eu gosto de arroz e feijão."], ["I don't like milk.", "Eu não gosto de leite."]],
+        checklist: [["Usou there is ou there are", /there (is|are)|there's/], ["Adjetivo antes da coisa", /\b(a|an|my|the|two|three) (big|small|new|old|red|blue|green|black|white|hot|cold|good|large) \w+/], ["Falou de comida ou bebida", /water|coffee|tea|milk|bread|rice|beans|meat|chicken|fruit|juice/], ["Usou like ou don't like", /\blike/]],
+        modelo: "I live in a small apartment. There is one bedroom and a big kitchen. There are two white chairs in the living room. I like rice and beans. I don't like milk, but I drink coffee every day." } }
   ]
 };

@@ -1,6 +1,6 @@
 /* Meu Inglês: service worker (funciona sem internet) */
-const CACHE = 'meu-ingles-v1';
-const ARQS = ['./', './index.html', './app.js?v=1', './conteudo.js?v=1', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
+const CACHE = 'meu-ingles-v2';
+const ARQS = ['./', './index.html', './app.js?v=2', './conteudo.js?v=2', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ARQS)).then(() => self.skipWaiting()));

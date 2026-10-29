@@ -1,8 +1,9 @@
 'use strict';
 (() => {
 const CHAVE = 'meu-ingles-v1';
-const VERSAO = 'Fase 1 · versão 1.0';
+const VERSAO = 'Fase 1.5 · versão 2.0';
 const INT = { 1: 1, 2: 2, 3: 4, 4: 7, 5: 15, 6: 30, 7: 60, 8: 120 };
+const XPV = { acerto: 10, combo: 10, sessao: 50, perfeita: 30, cartao: 2, revisao: 10, missao: 80, missaoCompleta: 20 };
 const app = document.getElementById('app');
 const tabsEl = document.getElementById('tabs');
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -16,18 +17,28 @@ const addDias = (s, n) => { const d = pd(s); d.setDate(d.getDate() + n); return 
 const SEM = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
 const MES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 const fmtCurta = s => { const d = pd(s); return `${SEM[d.getDay()]}, ${pad(d.getDate())}/${pad(d.getMonth() + 1)}`; };
+const fmtDM = s => { const d = pd(s); return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`; };
 const fmtLonga = s => { const d = pd(s); const w = SEM[d.getDay()]; return `${w.charAt(0).toUpperCase() + w.slice(1)}, ${d.getDate()} de ${MES[d.getMonth()]}`; };
 const fds = s => { const w = pd(s).getDay(); return w === 0 || w === 6; };
+const segundaDe = s => { const w = pd(s).getDay(); return addDias(s, w === 0 ? -6 : 1 - w); };
 
 /* ---------- estado ---------- */
-const padrao = () => ({ v: 1, criado: new Date().toISOString(), ajustes: { nome: '', lembrete: '0800', voz: '', rate: 0.9, sons: true, ocultarInstalar: false }, feitas: {}, cards: {}, erros: {}, dias: {}, atual: null });
+const padrao = () => ({ v: 1, criado: new Date().toISOString(), ajustes: { nome: '', lembrete: '0800', voz: '', rate: 0.9, sons: true, ocultarInstalar: false }, feitas: {}, cards: {}, erros: {}, dias: {}, atual: null, xp: 0, conquistas: {}, stats: {}, textos: [], melhorSeq: 0, melhorCombo: 0 });
 let S;
 function carregar() {
   let x = null;
   try { x = JSON.parse(localStorage.getItem(CHAVE)); } catch (e) { x = null; }
   S = x && x.v ? x : padrao();
-  S.ajustes = Object.assign(padrao().ajustes, S.ajustes || {});
-  ['feitas', 'cards', 'erros', 'dias'].forEach(k => { if (!S[k] || typeof S[k] !== 'object') S[k] = {}; });
+  const p = padrao();
+  S.ajustes = Object.assign(p.ajustes, S.ajustes || {});
+  ['feitas', 'cards', 'erros', 'dias', 'stats'].forEach(k => { if (!S[k] || typeof S[k] !== 'object' || Array.isArray(S[k])) S[k] = {}; });
+  if (!Array.isArray(S.textos)) S.textos = [];
+  if (typeof S.melhorCombo !== 'number') S.melhorCombo = 0;
+  if (typeof S.xp !== 'number') S.xp = Object.values(S.feitas).reduce((a, f) => a + (f.acertos || 0) * XPV.acerto + XPV.sessao, 0);
+  const novoConq = !S.conquistas || typeof S.conquistas !== 'object';
+  if (novoConq) S.conquistas = {};
+  S.melhorSeq = Math.max(S.melhorSeq || 0, sequencia());
+  if (novoConq) checarConquistas();
 }
 function salvar() { try { localStorage.setItem(CHAVE, JSON.stringify(S)); } catch (e) { toast('Não consegui salvar neste aparelho.'); } }
 const dia = () => { const h = hoje(); return S.dias[h] || (S.dias[h] = { min: 0, rev: 0, ses: [] }); };
@@ -43,6 +54,7 @@ SESSOES.forEach(s => {
     ITENS[o.id] = o; return o;
   });
   s.pergObj = (s.perguntas || []).map((q, k) => { const o = { id: `${s.id}-q${k}`, p: q[0], op: q[1], c: q[1][q[2]], pq: q[3], sid: s.id }; PERG[o.id] = o; return o; });
+  s.exObj = ((s.dica && s.dica.ex) || []).map((e, k) => ({ id: `${s.id}-ex${k}`, en: e[0], pt: e[1], sid: s.id, d: '', alt: [] }));
 });
 const semana = n => CURSO.semanas.find(w => w.n === n);
 function dataPlanejada(idx) { let d = CURSO.inicio; while (fds(d)) d = addDias(d, 1); let k = 0; while (k < idx) { d = addDias(d, 1); if (!fds(d)) k++; } return d; }
@@ -54,13 +66,22 @@ const IC = {
   som: svg('<path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/>'),
   hoje: svg('<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/>'),
   trilha: svg('<circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h7a3.5 3.5 0 0 0 0-7H9a3.5 3.5 0 0 1 0-7h7"/>'),
+  progresso: svg('<path d="M3 21h18"/><rect x="5" y="11" width="3" height="7" rx="1"/><rect x="10.5" y="7" width="3" height="11" rx="1"/><rect x="16" y="3" width="3" height="15" rx="1"/>'),
   palavras: svg('<rect x="3" y="6" width="14" height="15" rx="2"/><path d="M7 3h12a2 2 0 0 1 2 2v12"/>'),
   ajustes: svg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'),
   x: svg('<path d="M18 6 6 18M6 6l12 12"/>'),
   check: svg('<path d="M20 6 9 17l-5-5"/>'),
   seta: svg('<path d="M5 12h14M13 6l6 6-6 6"/>'),
   link: svg('<path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/>'),
-  lixo: svg('<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>')
+  lixo: svg('<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>'),
+  fogo: svg('<path d="M12 22c4 0 7-2.7 7-6.8 0-3.2-2-5.6-3.6-7.4-.4 1.8-1.4 3-2.6 3.6.3-3.4-1.3-6.6-4.3-8.4.3 3.1-1.4 5-3 6.9C4.3 11.3 5 13.6 5 15.2 5 19.3 8 22 12 22z"/>'),
+  estrela: svg('<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3z"/>'),
+  medalha: svg('<circle cx="12" cy="15" r="6"/><path d="m9 9.5-3-6.5h4l2 4 2-4h4l-3 6.5"/><path d="m12 12.5.9 1.8 2 .3-1.4 1.4.3 2-1.8-1-1.8 1 .3-2-1.4-1.4 2-.3z"/>'),
+  cadeado: svg('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'),
+  livro: svg('<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2V5z"/><path d="M4 19a2 2 0 0 1 2-2h13"/>'),
+  lapis: svg('<path d="M15 4l5 5L9 20H4v-5L15 4z"/>'),
+  copiar: svg('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/>'),
+  mais: svg('<path d="M12 5v14M5 12h14"/>')
 };
 
 /* ---------- voz ---------- */
@@ -79,7 +100,7 @@ function vozAtual() {
 let avisouVoz = false;
 function falar(txt, lento) {
   if (!temVoz) { toast('Este navegador não tem voz disponível.'); return; }
-  const u = new SpeechSynthesisUtterance(String(txt).replace(/[()]/g, ''));
+  const u = new SpeechSynthesisUtterance(String(txt).replace(/[()]/g, '').replace(/\.\.\./g, ', '));
   const v = vozAtual();
   if (!v && !avisouVoz && speechSynthesis.getVoices().length) { avisouVoz = true; toast('Este aparelho não tem voz em inglês instalada. Veja em Ajustes > Voz.'); }
   if (v) { u.voice = v; u.lang = v.lang; } else u.lang = 'en-US';
@@ -88,26 +109,36 @@ function falar(txt, lento) {
   if (sy.speaking || sy.pending) { sy.cancel(); setTimeout(() => sy.speak(u), 80); } else sy.speak(u);
 }
 let actx = null;
-function som(ok) {
+function tocar(notas, dur, vol) {
   if (!S.ajustes.sons) return;
   try {
     actx = actx || new (window.AudioContext || window.webkitAudioContext)();
     const t = actx.currentTime;
-    (ok ? [660, 990] : [320, 230]).forEach((f, i) => {
+    notas.forEach((f, i) => {
       const o = actx.createOscillator(), g = actx.createGain();
       o.type = 'sine'; o.frequency.value = f;
-      const t0 = t + i * 0.1;
-      g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.12, t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18);
-      o.connect(g); g.connect(actx.destination); o.start(t0); o.stop(t0 + 0.2);
+      const t0 = t + i * dur;
+      g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol || 0.12, t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur * 1.8);
+      o.connect(g); g.connect(actx.destination); o.start(t0); o.stop(t0 + dur * 2);
     });
   } catch (e) { /* sem som */ }
 }
+const som = ok => tocar(ok ? [660, 990] : [320, 230], 0.1);
+const somCombo = () => tocar([660, 880, 1100, 1320], 0.07);
+const somFesta = () => tocar([523, 659, 784, 1047, 784, 1047], 0.11, 0.1);
 
 /* ---------- comparação de respostas ---------- */
 const CONTR = { "i'm": 'i am', "you're": 'you are', "he's": 'he is', "she's": 'she is', "it's": 'it is', "we're": 'we are', "they're": 'they are', "what's": 'what is', "don't": 'do not', "doesn't": 'does not', "isn't": 'is not', "aren't": 'are not', "i'd": 'i would', "can't": 'cannot', "that's": 'that is', "there's": 'there is', "let's": 'let us' };
 const norm = t => String(t).toLowerCase().replace(/[’‘`´]/g, "'").replace(/-/g, ' ').replace(/[.,!?;:"“”()¿¡]/g, ' ').replace(/\s+/g, ' ').trim();
 const expandir = t => norm(t).split(' ').map(w => CONTR[w] || w).join(' ');
 const nPal = t => norm(t).split(' ').filter(Boolean).length;
+function lev(a, b) {
+  const m = a.length, n = b.length; if (Math.abs(m - n) > 1) return 2;
+  const d = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n).fill(0)]);
+  for (let j = 1; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[m][n];
+}
 function confere(resp, it) {
   const r = expandir(resp);
   const lista = [it.en, ...(it.alt || [])];
@@ -120,24 +151,15 @@ function confere(resp, it) {
   if (alvo.length >= 6 && lev(sa(norm(resp)), alvo) <= 1) return 'digitacao';
   return 'erro';
 }
-function lev(a, b) {
-  const m = a.length, n = b.length; if (Math.abs(m - n) > 1) return 2;
-  const d = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n).fill(0)]);
-  for (let j = 1; j <= n; j++) d[0][j] = j;
-  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-  return d[m][n];
-}
 function marcarErradas(resp, certo) {
   const alvo = norm(certo).split(' ');
   const pal = String(resp).trim().split(/\s+/).filter(Boolean);
   if (!pal.length) return '(vazio)';
-  return pal.map((w, i) => { const n = norm(w); const ok = n && alvo.includes(n) && (alvo[i] === n || alvo.indexOf(n) >= 0); return ok ? esc(w) : `<mark>${esc(w)}</mark>`; }).join(' ');
+  return pal.map(w => { const n = norm(w); return n && alvo.includes(n) ? esc(w) : `<mark>${esc(w)}</mark>`; }).join(' ');
 }
-function faltando(resp, certo) {
-  const r = norm(resp).split(' ');
-  const f = certo.replace(/[.,!?]/g, '').split(/\s+/).filter(w => !r.includes(norm(w)));
-  return f;
-}
+const faltando = (resp, certo) => { const r = norm(resp).split(' '); return certo.replace(/[.,!?]/g, '').split(/\s+/).filter(w => !r.includes(norm(w))); };
+const contarFrases = t => String(t).split(/[.!?]+/).map(x => x.trim()).filter(x => x.split(/\s+/).filter(Boolean).length >= 2).length;
+const textoNorm = t => String(t).toLowerCase().replace(/[’‘`´]/g, "'");
 
 /* ---------- utilidades ---------- */
 function emb(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
@@ -146,8 +168,8 @@ function sortearPeso(lista, n, chave) {
   while (out.length < n && pool.length) {
     const pesos = pool.map(x => 1 + 3 * (S.erros[chave(x)] || 0));
     let r = Math.random() * pesos.reduce((a, b) => a + b, 0);
-    let i = 0; while (r > pesos[i]) { r -= pesos[i]; i++; }
-    out.push(pool.splice(Math.min(i, pool.length - 1), 1)[0]);
+    let i = 0; while (i < pesos.length - 1 && r > pesos[i]) { r -= pesos[i]; i++; }
+    out.push(pool.splice(i, 1)[0]);
   }
   return out;
 }
@@ -163,12 +185,13 @@ function distratores(it, pool, campo, n) {
   return out;
 }
 let toastT = null;
-function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 2600); }
+function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 2800); }
 const btnSom = (t, extra) => `<button class="spk ${extra || ''}" data-act="falar" data-t="${esc(t)}" aria-label="Ouvir">${IC.som}</button>`;
 const yg = en => nPal(en) <= 4 ? `<a class="mini" href="https://youglish.com/pronounce/${encodeURIComponent(norm(en))}/english/us" target="_blank" rel="noopener">${IC.link} Ouvir em vídeos reais</a>` : '';
+const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 
 /* ---------- cartões (revisão espaçada) ---------- */
-function cardInfo(id) { const c = S.cards[id]; if (!c) return null; const it = ITENS[id]; return { id, en: it ? it.en : c.en, pt: it ? it.pt : c.pt, d: it ? it.d : '', c }; }
+function cardInfo(id) { const c = S.cards[id]; if (!c) return null; const it = ITENS[id]; return { id, en: it ? it.en : c.en, pt: it ? it.pt : c.pt, d: it ? it.d : '', sid: it ? it.sid : null, c }; }
 const devidos = () => { const h = hoje(); return emb(Object.keys(S.cards).filter(id => S.cards[id].due <= h && cardInfo(id))).sort((a, b) => S.cards[a].due.localeCompare(S.cards[b].due)); };
 function introduzir(itens) { const am = addDias(hoje(), 1); itens.forEach(it => { if (!S.cards[it.id]) S.cards[it.id] = { box: 1, due: am, ok: 0, err: 0, add: hoje() }; }); }
 function avaliarCard(id, acertou) {
@@ -176,9 +199,48 @@ function avaliarCard(id, acertou) {
   if (acertou) { c.box = Math.min((c.box || 1) + 1, 8); c.due = addDias(hoje(), INT[c.box]); c.ok = (c.ok || 0) + 1; }
   else { c.box = 1; c.due = addDias(hoje(), 1); c.err = (c.err || 0) + 1; S.erros[id] = (S.erros[id] || 0) + 1; }
 }
+const forcaCat = box => (box || 1) >= 5 ? 'dom' : (box || 1) >= 2 ? 'apr' : 'com';
+const dificil = id => ((S.cards[id] && S.cards[id].err) || 0) + (S.erros[id] || 0) >= 2;
+
+/* ---------- XP, nível, conquistas ---------- */
+function nivelDe(xp) { let n = 1, base = 0, need = 300; while (xp >= base + need) { base += need; n++; need += 100; } return { n, base, need, dentro: xp - base }; }
+function ganharXP(v) { S.xp = (S.xp || 0) + v; const c = (R.view === 'sessao') ? ctx() : null; if (c) c.xp = (c.xp || 0) + v; }
+function semanasCompletas() {
+  const porSemana = {};
+  Object.entries(S.dias).forEach(([d, v]) => { if (!fds(d) && v.ses && v.ses.length) { const m = segundaDe(d); (porSemana[m] = porSemana[m] || new Set()).add(d); } });
+  return Object.values(porSemana).filter(s => s.size >= 5).length;
+}
+const nCards = () => Object.keys(S.cards).length;
+const nDom = () => Object.values(S.cards).filter(c => (c.box || 1) >= 5).length;
+const CONQ = [
+  { id: 'primeira', t: 'Primeiro passo', d: 'Concluir a sessão 1', ok: () => !!S.feitas.s1 },
+  { id: 'madrugador', t: 'Madrugador', d: 'Concluir uma sessão antes das 8h', ok: () => Object.values(S.feitas).some(f => f.em && new Date(f.em).getHours() < 8) },
+  { id: 'perfeita', t: 'Lição perfeita', d: 'Uma sessão sem nenhum erro de primeira', ok: () => Object.values(S.feitas).some(f => f.total > 0 && f.acertos === f.total) },
+  { id: 'combo10', t: 'Combo de 10', d: '10 acertos seguidos numa prática', ok: () => (S.melhorCombo || 0) >= 10 },
+  { id: 'seq3', t: '3 dias seguidos', d: 'Estudar 3 dias úteis seguidos', ok: () => (S.melhorSeq || 0) >= 3 },
+  { id: 'seq5', t: '5 dias seguidos', d: 'Estudar 5 dias úteis seguidos', ok: () => (S.melhorSeq || 0) >= 5 },
+  { id: 'semana', t: 'Semana completa', d: 'Estudar de segunda a sexta na mesma semana', ok: () => semanasCompletas() >= 1 },
+  { id: 'texto1', t: 'Primeiro texto', d: 'Completar a primeira missão de escrita', ok: () => S.textos.length >= 1 },
+  { id: 'pal50', t: '50 palavras', d: 'Ter 50 palavras no seu baralho', ok: () => nCards() >= 50 },
+  { id: 'propria', t: 'Palavra sua', d: 'Adicionar uma palavra sua', ok: () => Object.values(S.cards).some(c => c.own) },
+  { id: 'fds', t: 'Fim de semana ativo', d: 'Fazer uma revisão no fim de semana', ok: () => Object.entries(S.dias).some(([d, v]) => fds(d) && (v.rev > 0 || (v.ses && v.ses.length))) },
+  { id: 'seq10', t: '10 dias seguidos', d: 'Estudar 10 dias úteis seguidos', ok: () => (S.melhorSeq || 0) >= 10 },
+  { id: 'dom10', t: '10 dominadas', d: '10 palavras com força máxima', ok: () => nDom() >= 10 },
+  { id: 'pal100', t: '100 palavras', d: 'Ter 100 palavras no seu baralho', ok: () => nCards() >= 100 },
+  { id: 'textos4', t: 'Escritor do mês', d: 'Completar as 4 missões de escrita do mês 1', ok: () => new Set(S.textos.map(t => t.sid)).size >= 4 },
+  { id: 'mes1', t: 'Mês 1 completo', d: 'Concluir as 20 sessões do mês 1', ok: () => !!S.feitas.s20 },
+  { id: 'seq20', t: '20 dias seguidos', d: 'Estudar 20 dias úteis seguidos', ok: () => (S.melhorSeq || 0) >= 20 },
+  { id: 'dom50', t: '50 dominadas', d: '50 palavras com força máxima', ok: () => nDom() >= 50 }
+];
+function checarConquistas() {
+  const novas = [];
+  CONQ.forEach(c => { if (!S.conquistas[c.id]) { let ok = false; try { ok = c.ok(); } catch (e) { ok = false; } if (ok) { S.conquistas[c.id] = hoje(); novas.push(c); } } });
+  return novas;
+}
+function avisarConquistas(novas) { if (novas.length) { tocar([784, 1047], 0.1); toast(`Conquista: ${novas.map(c => c.t).join(', ')}!`); } }
 
 /* ---------- runtime ---------- */
-const R = { view: 'hoje', ses: null, rev: null, prat: null, celebrar: null, ultimo: 0 };
+const R = { view: 'hoje', ses: null, rev: null, prat: null, modal: null, sheet: null, ultimo: 0, filtroPal: 'todas', abertos: {} };
 function tick() {
   const agora = Date.now();
   if (R.ultimo && agora - R.ultimo < 5 * 60000) {
@@ -191,6 +253,7 @@ function tick() {
 const ctx = () => (R.ses && R.ses.modo === 'refazer') ? R.ses : S.atual;
 
 /* ---------- exercícios ---------- */
+const HAB = { ouvir: 'Ouvir', escrever: 'Ouvir', significa: 'Entender', escolha: 'Gramática', inverso: 'Formar frases', montar: 'Formar frases', traduzir: 'Formar frases' };
 function exercicio(tipo, it, sIdx) {
   const pool = poolAte(sIdx);
   if (tipo === 'ouvir') {
@@ -206,16 +269,18 @@ function exercicio(tipo, it, sIdx) {
   if (tipo === 'montar') {
     const limpa = s => s.replace(/[.,!?]/g, '').split(/\s+/).filter(Boolean);
     const pal = limpa(it.en); const low = pal.map(w => w.toLowerCase());
-    const extras = [...new Set(emb(pool.filter(o => o.id !== it.id).flatMap(o => limpa(o.en))).filter(w => !low.includes(w.toLowerCase())))].slice(0, 2);
+    const extras = [...new Set(emb(pool.filter(o => o.id !== it.id).flatMap(o => limpa(o.en))).filter(w => !low.includes(w.toLowerCase())))].slice(0, pal.length >= 7 ? 3 : 2);
     return { t: 'montar', it, pecas: emb([...pal, ...extras]), c: it.en };
   }
+  if (tipo === 'traduzir') return { t: 'traduzir', it, c: it.en };
   return { t: 'escrever', it, c: it.en };
 }
 const perguntaEx = q => ({ t: 'escolha', q, op: emb(q.op), c: q.c });
 function novaPratica(s) {
   const ex = []; const idx = s.idx;
   let k = 0;
-  emb(s.itensObj).slice(0, 10).forEach(it => {
+  const novos = emb(s.itensObj).slice(0, 10);
+  novos.forEach(it => {
     const tipos = nPal(it.en) >= 3 ? ['montar', 'ouvir', 'significa'] : ['ouvir', 'significa', 'inverso'];
     ex.push(exercicio(tipos[k++ % 3], it, idx));
   });
@@ -223,6 +288,12 @@ function novaPratica(s) {
   if (idx >= 2) {
     const base = s.itensObj.length ? s.itensObj : anteriores;
     emb(base.filter(it => nPal(it.en) <= 5)).slice(0, s.tipo === 'checkpoint' ? 3 : 2).forEach(it => ex.push(exercicio('escrever', it, idx)));
+    const trad = emb((s.itensObj.length ? s.itensObj : anteriores).filter(it => nPal(it.en) >= 2 && nPal(it.en) <= 6 && !ehNum(it))).slice(0, s.tipo === 'checkpoint' ? 3 : 2);
+    trad.forEach(it => ex.push(exercicio('traduzir', it, idx)));
+  }
+  if (idx >= 1) {
+    const longas = emb(s.exObj.filter(e => nPal(e.en) >= 4 && nPal(e.en) <= 10));
+    if (longas.length) ex.push(exercicio('montar', longas[0], idx));
   }
   s.pergObj.forEach(q => ex.push(perguntaEx(q)));
   const nEsp = s.revisao || (idx >= 1 ? 3 : 0);
@@ -230,27 +301,29 @@ function novaPratica(s) {
   const pergAnt = SESSOES.slice(0, idx).flatMap(x => x.pergObj);
   if (s.perguntasRevisao) sortearPeso(pergAnt, s.perguntasRevisao, x => x.id).forEach(q => ex.push(perguntaEx(q)));
   else { const errQ = pergAnt.filter(q => S.erros[q.id] > 0); if (errQ.length) ex.push(perguntaEx(sortearPeso(errQ, 1, x => x.id)[0])); }
-  const fila = emb(ex);
-  return { fila, pos: 0, total: fila.length, acertos: 0, erros: [], resp: null, monta: [] };
+  // reconhecer primeiro, produzir depois
+  const peso = e => ({ ouvir: 0, significa: 0, inverso: 1, escolha: 1, montar: 2, escrever: 2, traduzir: 3 }[e.t] || 0) + Math.random() * 1.6;
+  const fila = ex.map(e => [peso(e), e]).sort((a, b) => a[0] - b[0]).map(x => x[1]);
+  return { fila, pos: 0, total: fila.length, acertos: 0, erros: [], resp: null, monta: [], combo: 0, maxCombo: 0, flash: 0 };
 }
 function enunciado(ex) {
   if (ex.t === 'escolha') return ex.q.p;
   if (ex.t === 'ouvir') return `Áudio: “${ex.it.en}”`;
   if (ex.t === 'significa') return ex.it.en;
   if (ex.t === 'escrever') return `Ditado: “${ex.it.en}”`;
+  if (ex.t === 'traduzir') return `Escreva em inglês: ${ex.it.pt}`;
   return ex.it.pt;
 }
 
 /* ---------- sessão ---------- */
+function passosDe(s, comRev) { return [...(comRev ? ['rev'] : []), ...(s.itensObj.length ? ['pal'] : []), 'dica', 'prat', ...(s.missao ? ['missao'] : []), 'fim']; }
 function iniciarSessao(sid, modo) {
-  const s = SES[sid]; R.celebrar = null; R.prat = null; R.rev = null; R.ultimo = Date.now();
+  const s = SES[sid]; R.prat = null; R.rev = null; R.sheet = null; R.ultimo = Date.now();
   if (modo === 'refazer') {
-    R.ses = { sid, modo, passos: [...(s.itensObj.length ? ['pal'] : []), 'dica', 'prat', 'fim'], feitos: [], ms: 0, palIdx: 0 };
+    R.ses = { sid, modo, passos: [...(s.itensObj.length ? ['pal'] : []), 'dica', 'prat', 'fim'], feitos: [], ms: 0, xp: 0, palIdx: 0 };
   } else {
-    if (!S.atual || S.atual.sid !== sid) {
-      const temRev = devidos().length > 0;
-      S.atual = { sid, inicio: Date.now(), ms: 0, feitos: [], passos: [...(temRev ? ['rev'] : []), ...(s.itensObj.length ? ['pal'] : []), 'dica', 'prat', 'fim'] };
-    }
+    if (!S.atual || S.atual.sid !== sid) S.atual = { sid, inicio: Date.now(), ms: 0, xp: 0, feitos: [], passos: passosDe(s, devidos().length > 0) };
+    if (s.missao && !S.atual.passos.includes('missao')) S.atual.passos.splice(S.atual.passos.indexOf('fim'), 0, 'missao');
     R.ses = { sid, modo: 'normal', palIdx: 0 };
   }
   R.view = 'sessao';
@@ -268,6 +341,7 @@ function entrarPasso() {
   }
   if (p === 'pal') R.ses.palIdx = 0;
   if (p === 'prat') R.prat = novaPratica(s);
+  if (p === 'missao') R.ses.verModelo = false;
 }
 function falarInicioPasso() {
   const p = passoAtual(); const s = SES[R.ses.sid];
@@ -279,35 +353,77 @@ function concluirPasso(p) {
   const c = ctx(); const s = SES[R.ses.sid];
   if (!c.feitos.includes(p)) c.feitos.push(p);
   if (p === 'pal' && R.ses.modo !== 'refazer') introduzir(s.itensObj);
-  if (p === 'prat' && R.prat) c.res = { acertos: R.prat.acertos, total: R.prat.total, erros: R.prat.erros.slice(0, 40) };
+  if (p === 'prat' && R.prat) { c.res = { acertos: R.prat.acertos, total: R.prat.total, erros: R.prat.erros.slice(0, 40), maxCombo: R.prat.maxCombo }; }
   entrarPasso(); salvar(); render(); window.scrollTo(0, 0);
   falarInicioPasso();
 }
 function concluirSessao() {
   const c = S.atual; if (!c) return;
+  const s = SES[c.sid];
   const min = Math.max(1, Math.round((c.ms || 0) / 60000));
-  const res = c.res || { acertos: 0, total: 0, erros: [] };
-  S.feitas[c.sid] = { em: new Date().toISOString(), dia: hoje(), min, acertos: res.acertos, total: res.total, erros: res.erros.slice(0, 30) };
+  const res = c.res || { acertos: 0, total: 0, erros: [], maxCombo: 0 };
+  const nivelAntes = nivelDe(S.xp).n;
+  const perfeita = res.total > 0 && res.acertos === res.total;
+  const bonus = XPV.sessao + (perfeita ? XPV.perfeita : 0);
+  S.xp += bonus; c.xp = (c.xp || 0) + bonus;
+  S.feitas[c.sid] = { em: new Date().toISOString(), dia: hoje(), min, acertos: res.acertos, total: res.total, erros: res.erros.slice(0, 30), xp: c.xp, combo: res.maxCombo || 0, missao: !!c.missaoFeita };
   const d = dia(); d.min += min; if (!d.ses.includes(c.sid)) d.ses.push(c.sid);
-  R.celebrar = { sid: c.sid, min, acertos: res.acertos, total: res.total };
+  S.melhorSeq = Math.max(S.melhorSeq || 0, sequencia());
+  const novas = checarConquistas();
+  const nivel = nivelDe(S.xp);
+  const seg = segundaDe(hoje());
+  const semanaFeita = [0, 1, 2, 3, 4].every(i => { const x = S.dias[addDias(seg, i)]; return x && x.ses && x.ses.length; });
+  R.modal = { tipo: 'sessao', s, xp: c.xp, min, acertos: res.acertos, total: res.total, combo: res.maxCombo || 0, perfeita, novas, subiu: nivel.n > nivelAntes ? nivel.n : 0, semana: semanaFeita, missao: !!c.missaoFeita };
   S.atual = null; R.ses = null; R.prat = null; R.rev = null;
   salvar(); R.view = 'hoje'; render(); window.scrollTo(0, 0);
+  somFesta();
 }
 function sairSessao() {
   if (temVoz) speechSynthesis.cancel();
-  if (R.ses && R.ses.modo === 'refazer') { R.view = 'trilha'; }
-  else { R.view = 'hoje'; }
+  if (R.ses && R.ses.modo === 'refazer') {
+    const xp = R.ses.xp || 0; R.view = 'trilha';
+    if (xp) toast(`+${xp} XP praticando de novo.`);
+  } else { R.view = 'hoje'; }
   R.ses = null; R.prat = null; R.rev = null; salvar(); render(); window.scrollTo(0, 0);
 }
 
+/* ---------- missão de escrita ---------- */
+function estadoMissao(s, texto) {
+  const t = textoNorm(texto || '');
+  const frases = contarFrases(texto || '');
+  const checks = s.missao.checklist.map(([rot, re]) => ({ rot, ok: re.test(t) }));
+  return { frases, checks, pronto: frases >= s.missao.min, completo: checks.every(c => c.ok) };
+}
+function htmlChecks(s, texto) {
+  const e = estadoMissao(s, texto);
+  return `<div class="mcount ${e.pronto ? 'ok' : ''}">${e.frases} de ${s.missao.min} frases</div>` + e.checks.map(c => `<div class="mchk ${c.ok ? 'ok' : ''}"><span>${c.ok ? IC.check : ''}</span>${esc(c.rot)}</div>`).join('') + `<div class="small muted">${e.completo ? `Todos os requisitos cumpridos: +${XPV.missaoCompleta} XP extra.` : `Cumprindo todos, ganha +${XPV.missaoCompleta} XP extra.`}</div>`;
+}
+function textoCorrecao(s, texto) {
+  return `Aside, corrige meu texto em inglês? Sou iniciante (mês 1 do Meu Inglês). Mostre os erros, explique em português e me dê a versão corrigida.\n\nMissão: ${s.missao.pedido}\n\nMeu texto:\n${texto.trim()}`;
+}
+async function copiar(txt) {
+  try { await navigator.clipboard.writeText(txt); toast('Copiado! Cole no chat do Aside pra eu corrigir.'); }
+  catch (e) { const ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); toast('Copiado! Cole no chat do Aside pra eu corrigir.'); } catch (e2) { toast('Não consegui copiar. Selecione o texto e copie.'); } ta.remove(); }
+}
+function concluirMissao() {
+  const c = S.atual; const s = SES[R.ses.sid]; const texto = (document.getElementById('texto') || {}).value || c.rascunho || '';
+  const e = estadoMissao(s, texto);
+  if (!e.pronto) { toast(`Escreva pelo menos ${s.missao.min} frases.`); return; }
+  S.textos.push({ sid: s.id, em: new Date().toISOString(), texto: texto.trim(), completo: e.completo });
+  ganharXP(XPV.missao + (e.completo ? XPV.missaoCompleta : 0));
+  c.missaoFeita = true; delete c.rascunho;
+  somCombo();
+  concluirPasso('missao');
+}
+
 /* ---------- revisão ---------- */
-function novaRevisao(fila, origem) { return { fila: fila.slice(), pos: 0, mostrou: false, rep: {}, origem, ms: 0, feitos: 0 }; }
+function novaRevisao(fila, origem) { return { fila: fila.slice(), pos: 0, mostrou: false, origem, ms: 0, feitos: 0, xp: 0 }; }
 function cardAtual() { const r = R.rev; if (!r || r.pos >= r.fila.length) return null; const it = r.fila[r.pos]; return { key: it, id: it.replace(/#r$/, ''), rep: /#r$/.test(it) }; }
 function modoProducao(cur) { return !cur.rep && (S.cards[cur.id] && S.cards[cur.id].box >= 3); }
 function falarCardSeRec() { const cur = cardAtual(); if (cur && !modoProducao(cur)) { const ci = cardInfo(cur.id); if (ci) falar(ci.en); } }
 function avaliar(acertou) {
   const r = R.rev; const cur = cardAtual(); if (!cur) return;
-  if (!cur.rep) { avaliarCard(cur.id, acertou); r.feitos++; if (!acertou) r.fila.push(cur.id + '#r'); }
+  if (!cur.rep) { avaliarCard(cur.id, acertou); r.feitos++; if (acertou) { ganharXP(XPV.cartao); r.xp += XPV.cartao; } else r.fila.push(cur.id + '#r'); }
   r.pos++; r.mostrou = false; salvar();
   if (r.pos >= r.fila.length) return fimRevisao();
   render(); falarCardSeRec();
@@ -316,20 +432,22 @@ function fimRevisao() {
   const r = R.rev;
   if (r.origem === 'sessao') { R.rev = null; concluirPasso('rev'); toast('Revisão feita!'); return; }
   const min = Math.round(r.ms / 60000); const d = dia(); d.min += min; d.rev += 1;
-  R.rev = null; salvar(); R.view = R.voltar || 'hoje'; render(); window.scrollTo(0, 0);
-  toast(`Revisão feita: ${r.feitos} cartões.`);
+  S.xp += XPV.revisao;
+  R.rev = null; const novas = checarConquistas(); salvar(); R.view = R.voltar || 'hoje'; render(); window.scrollTo(0, 0);
+  toast(`Revisão feita: ${plural(r.feitos, 'cartão', 'cartões')}, +${r.xp + XPV.revisao} XP.`);
+  setTimeout(() => avisarConquistas(novas), 1500);
 }
 function iniciarRevisaoLivre(volta) {
   const fila = devidos().slice(0, 40);
   if (!fila.length) { toast('Nada pra revisar agora.'); return; }
-  R.voltar = volta || 'hoje'; R.rev = novaRevisao(fila, 'livre'); R.view = 'revisao'; R.ultimo = Date.now(); R.celebrar = null;
+  R.voltar = volta || 'hoje'; R.rev = novaRevisao(fila, 'livre'); R.view = 'revisao'; R.ultimo = Date.now(); R.modal = null; R.sheet = null;
   render(); window.scrollTo(0, 0); falarCardSeRec();
 }
 function htmlRevisao() {
   const r = R.rev; const cur = cardAtual(); if (!cur) return '';
   const ci = cardInfo(cur.id); const prod = modoProducao(cur);
   const pct = Math.round(r.pos / r.fila.length * 100);
-  let h = `<div class="pbar"><i style="width:${pct}%"></i></div><div class="muted small center">${r.pos + 1} de ${r.fila.length}${cur.rep ? ' · revendo um erro' : ''}</div>`;
+  let h = `<div class="pbar"><i style="width:${pct}%"></i></div><div class="muted small center">${r.pos + 1} de ${r.fila.length}${cur.rep ? ' · revendo um erro' : ''}${r.xp ? ` · +${r.xp} XP` : ''}</div>`;
   if (!prod) {
     h += `<div class="cardbig"><div class="lbl">Você lembra o que significa?</div><div class="en">${esc(ci.en)}</div><div class="row c">${btnSom(ci.en)}<button class="chip" data-act="falarLento" data-t="${esc(ci.en)}">Devagar</button></div>`;
     h += r.mostrou ? `<div class="pt">${esc(ci.pt)}</div>${ci.d ? `<div class="tip">${esc(ci.d)}</div>` : ''}` : '';
@@ -346,27 +464,46 @@ function htmlRevisao() {
 
 /* ---------- prática ---------- */
 function falarEx() { const P = R.prat; if (!P) return; const ex = P.fila[P.pos]; if (ex && (ex.t === 'ouvir' || ex.t === 'escrever' || ex.t === 'significa')) falar(ex.it.en); }
+function stat(tipo, ok) { const s = S.stats[tipo] || (S.stats[tipo] = { ok: 0, n: 0 }); s.n++; if (ok) s.ok++; }
 function responder(valor) {
   const P = R.prat; const ex = P.fila[P.pos]; if (P.resp) return;
   let ok = false, quase = false;
-  if (ex.t === 'escrever') { const r = confere(valor, ex.it); ok = r !== 'erro'; quase = r === 'quase' || r === 'digitacao' ? r : false; }
+  if (ex.t === 'escrever' || ex.t === 'traduzir') { const r = confere(valor, ex.it); ok = r !== 'erro'; quase = (r === 'quase' || r === 'digitacao') ? r : false; }
   else if (ex.t === 'montar') ok = norm(valor) === norm(ex.c);
   else ok = valor === ex.c;
-  P.resp = { valor, ok, quase }; som(ok);
+  P.resp = { valor, ok, quase };
   const chave = ex.q ? ex.q.id : ex.it.id;
-  if (!ex.retry) {
-    if (ok) P.acertos++;
-    else {
+  if (ok) {
+    P.combo++; P.maxCombo = Math.max(P.maxCombo, P.combo); S.melhorCombo = Math.max(S.melhorCombo || 0, P.combo);
+    if (!ex.retry) { P.acertos++; ganharXP(XPV.acerto); }
+    if (P.combo > 0 && P.combo % 5 === 0) { ganharXP(XPV.combo); P.flash = P.combo; somCombo(); } else som(true);
+  } else {
+    P.combo = 0; som(false);
+    if (!ex.retry) {
       P.erros.push({ tipo: ex.t, chave, pergunta: enunciado(ex), resposta: valor, certo: ex.c });
       S.erros[chave] = (S.erros[chave] || 0) + 1;
-      if (ex.it && S.cards[ex.it.id]) { S.cards[ex.it.id].box = 1; S.cards[ex.it.id].due = addDias(hoje(), 1); }
+      if (ex.it && S.cards[ex.it.id]) { P.resp.cardAntes = Object.assign({}, S.cards[ex.it.id]); S.cards[ex.it.id].box = 1; S.cards[ex.it.id].due = addDias(hoje(), 1); }
     }
+    const novo = Object.assign({}, ex, { retry: true }); if (novo.op) novo.op = emb(novo.op); if (novo.pecas) novo.pecas = emb(novo.pecas); P.fila.push(novo);
   }
-  if (!ok) { const novo = Object.assign({}, ex, { retry: true }); if (novo.op) novo.op = emb(novo.op); if (novo.pecas) novo.pecas = emb(novo.pecas); P.fila.push(novo); }
+  if (!ex.retry) stat(ex.t, ok);
+  salvar(); render();
+}
+function minhaValeu() {
+  const P = R.prat; const ex = P.fila[P.pos]; if (!P.resp || P.resp.ok) return;
+  P.resp.ok = true; P.resp.aceita = true;
+  P.fila.pop();
+  if (!ex.retry) {
+    P.erros.pop(); const k = ex.it.id; S.erros[k] = Math.max(0, (S.erros[k] || 1) - 1);
+    if (P.resp.cardAntes) S.cards[k] = P.resp.cardAntes;
+    P.acertos++; ganharXP(XPV.acerto);
+    const st = S.stats[ex.t]; if (st) st.ok++;
+  }
+  P.combo++; P.maxCombo = Math.max(P.maxCombo, P.combo);
   salvar(); render();
 }
 function continuarEx() {
-  const P = R.prat; P.pos++; P.resp = null; P.monta = [];
+  const P = R.prat; P.pos++; P.resp = null; P.monta = []; P.flash = 0;
   if (P.pos >= P.fila.length) return concluirPasso('prat');
   render(); window.scrollTo(0, 0); falarEx();
   const inp = document.getElementById('ditado'); if (inp) setTimeout(() => inp.focus(), 50);
@@ -375,7 +512,8 @@ const ELOGIOS = [['Great!', 'Ótimo!'], ['Nice!', 'Boa!'], ['Correct!', 'Certo!'
 function htmlPratica() {
   const P = R.prat; const ex = P.fila[P.pos]; if (!ex) return '';
   const pct = Math.round(P.pos / P.fila.length * 100);
-  let h = `<div class="pbar"><i style="width:${pct}%"></i></div><div class="muted small center">${P.pos + 1} de ${P.fila.length}${ex.retry ? ' · revendo um erro' : ''}</div>`;
+  let h = `<div class="pbar"><i style="width:${pct}%"></i></div><div class="prow"><span class="muted small">${P.pos + 1} de ${P.fila.length}${ex.retry ? ' · revendo um erro' : ''}</span>${P.combo >= 3 ? `<span class="combo ${P.flash ? 'flash' : ''}">${IC.fogo}${P.combo} seguidas</span>` : ''}</div>`;
+  if (P.flash) h += `<div class="comboban">Combo de ${P.flash}! +${XPV.combo} XP</div>`;
   const resp = P.resp;
   const opcoes = (lista, ingles) => lista.map(o => {
     let cls = 'opt';
@@ -383,6 +521,7 @@ function htmlPratica() {
     return `<button class="${cls}${ingles ? ' enopt' : ''}" data-act="resp" data-v="${esc(o)}" ${resp ? 'disabled' : ''}>${esc(o)}</button>`;
   }).join('');
   const audio = t => `<div class="row c">${btnSom(t, 'lg')}<button class="chip" data-act="falarLento" data-t="${esc(t)}">Devagar</button></div>`;
+  const campo = ph => `<input id="ditado" class="inp" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" lang="en" placeholder="${ph}" ${resp ? 'disabled' : ''} value="${resp ? esc(resp.valor) : ''}">`;
   if (ex.t === 'ouvir') h += `<h3 class="q">Ouça e escolha o que você ouviu</h3>${audio(ex.it.en)}${opcoes(ex.op, true)}`;
   if (ex.t === 'significa') h += `<h3 class="q">O que significa?</h3><div class="en mid">${esc(ex.it.en)}</div>${audio(ex.it.en)}${opcoes(ex.op)}`;
   if (ex.t === 'inverso') h += `<h3 class="q">Como se diz em inglês?</h3><div class="pt big">${esc(ex.it.pt)}</div>${opcoes(ex.op, true)}`;
@@ -395,8 +534,11 @@ function htmlPratica() {
     if (!resp) h += `<button class="btn" data-act="verificarMonta" ${usados.length ? '' : 'disabled'}>Verificar</button>`;
   }
   if (ex.t === 'escrever') {
-    h += `<h3 class="q">Escreva o que você ouviu</h3>${audio(ex.it.en)}<div class="muted small center">${nPal(ex.it.en)} ${nPal(ex.it.en) === 1 ? 'palavra' : 'palavras'}${ehNum(ex.it) ? ' · pode usar número' : ''}</div>`;
-    h += `<input id="ditado" class="inp" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Digite aqui" ${resp ? 'disabled' : ''} value="${resp ? esc(resp.valor) : ''}">`;
+    h += `<h3 class="q">Escreva o que você ouviu</h3>${audio(ex.it.en)}<div class="muted small center">${plural(nPal(ex.it.en), 'palavra', 'palavras')}${ehNum(ex.it) ? ' · pode usar número' : ''}</div>${campo('Digite aqui')}`;
+    if (!resp) h += `<button class="btn" data-act="verificarDitado">Verificar</button>`;
+  }
+  if (ex.t === 'traduzir') {
+    h += `<h3 class="q">Escreva em inglês</h3><div class="pt big">${esc(ex.it.pt)}</div><div class="muted small center">${plural(nPal(ex.it.en), 'palavra', 'palavras')} · sem pressa, pense na estrutura</div>${campo('Digite em inglês')}`;
     if (!resp) h += `<button class="btn" data-act="verificarDitado">Verificar</button>`;
   }
   if (resp) {
@@ -404,16 +546,17 @@ function htmlPratica() {
     let fb = `<div class="fb ${resp.ok ? 'ok' : 'err'}">`;
     if (resp.ok) {
       const e = ELOGIOS[Math.floor(Math.random() * ELOGIOS.length)];
-      fb += `<b>${e[0]}</b> <span class="muted">${e[1]}</span>`;
+      fb += resp.aceita ? `<b>Ok, contei como certa.</b> <span class="muted">Valeu pela honestidade.</span>` : `<b>${e[0]}</b> <span class="muted">${e[1]}</span>${ex.retry ? '' : ` <span class="xpchip">+${XPV.acerto} XP</span>`}`;
       if (resp.quase === 'quase') fb += `<div>Só um detalhe: o certo é <b>${esc(ex.c)}</b> (com apóstrofo).</div>`;
       if (resp.quase === 'digitacao') fb += `<div>Contei como certo, mas atenção à escrita: <b>${esc(ex.c)}</b></div>`;
     } else {
       fb += `<b>Não foi dessa vez.</b> O certo é: <div class="certo">${esc(ex.c)}</div>`;
-      if (ex.t === 'escrever' || ex.t === 'montar') {
+      if (ex.t === 'escrever' || ex.t === 'montar' || ex.t === 'traduzir') {
         const f = faltando(resp.valor || '', ex.c);
         fb += `<div class="small">${ex.t === 'montar' ? 'Você montou' : 'Você escreveu'}: ${marcarErradas(resp.valor || '', ex.c)}${f.length ? `<br>Faltou ou ficou diferente: ${f.map(w => `<mark>${esc(w)}</mark>`).join(' ')}` : '<br>As palavras estão certas, mas a ordem não.'}</div>`;
       }
       fb += `<div class="small muted">${ex.t === 'escolha' ? 'Essa volta no fim da prática e nas próximas sessões.' : 'Essa volta no fim da prática e na revisão de amanhã.'}</div>`;
+      if (ex.t === 'traduzir') fb += `<button class="chip" data-act="valeu">Minha resposta também está certa</button>`;
     }
     if (ex.t === 'escolha' && ex.q.pq) fb += `<div class="why">${esc(ex.q.pq)}</div>`;
     if (ex.it && ex.it.d && !resp.ok) fb += `<div class="why">${esc(ex.it.d)}</div>`;
@@ -424,11 +567,11 @@ function htmlPratica() {
   return h;
 }
 
-/* ---------- telas ---------- */
-const NOMES_PASSO = { rev: 'Revisão', pal: 'Palavras', dica: 'Entenda', prat: 'Pratique', fim: 'Resumo' };
+/* ---------- tela da sessão ---------- */
+const NOMES_PASSO = { rev: 'Revisão', pal: 'Palavras', dica: 'Entenda', prat: 'Pratique', missao: 'Missão', fim: 'Resumo' };
 function htmlSessao() {
   const s = SES[R.ses.sid]; const c = ctx(); const p = passoAtual();
-  let h = `<div class="shead"><button class="icon" data-act="sair" aria-label="Sair">${IC.x}</button><div class="grow"><div class="muted small">Sessão ${s.n} · Semana ${s.semana}${R.ses.modo === 'refazer' ? ' · praticando de novo' : ''}</div><b>${esc(s.titulo)}</b></div></div>`;
+  let h = `<div class="shead"><button class="icon" data-act="sair" aria-label="Sair">${IC.x}</button><div class="grow"><div class="muted small">Sessão ${s.n} · Semana ${s.semana}${R.ses.modo === 'refazer' ? ' · praticando de novo' : ''}</div><b>${esc(s.titulo)}</b></div><span class="xpchip big">${c.xp || 0} XP</span></div>`;
   h += `<div class="steps">${c.passos.map(x => `<span class="st ${c.feitos.includes(x) ? 'done' : ''} ${x === p ? 'cur' : ''}">${c.feitos.includes(x) ? IC.check : ''}${NOMES_PASSO[x]}</span>`).join('')}</div>`;
   if (p === 'rev') h += `<div class="sub">Primeiro, os cartões que estão no dia de revisar.</div>` + htmlRevisao();
   if (p === 'pal') {
@@ -438,25 +581,39 @@ function htmlSessao() {
     h += `<div class="duo">${R.ses.palIdx > 0 ? '<button class="btn sec" data-act="palVoltar">Voltar</button>' : '<span></span>'}<button class="btn" data-act="palProx">${R.ses.palIdx + 1 < n ? 'Próxima' : 'Terminei as palavras'}</button></div>`;
   }
   if (p === 'dica') {
-    const d = s.dica;
-    h += `<div class="card"><div class="lbl">Entenda</div><h2>${esc(d.t)}</h2>${d.p.map(x => `<p>${x}</p>`).join('')}</div>`;
-    h += `<div class="card"><div class="lbl">Exemplos: toque, ouça e repita</div>${d.ex.map(e => `<div class="exl">${btnSom(e[0])}<div><div class="en sm">${esc(e[0])}</div><div class="muted small">${esc(e[1])}</div></div></div>`).join('')}</div>`;
+    h += htmlDica(s);
     h += `<button class="btn" data-act="dicaOk">Entendi, vamos praticar</button>`;
   }
   if (p === 'prat') h += htmlPratica();
+  if (p === 'missao') {
+    const m = s.missao; const txt = c.rascunho || '';
+    h += `<div class="card mission"><div class="lbl">${IC.estrela} Missão da semana · +${XPV.missao} XP</div><h2>${esc(m.titulo)}</h2><p>${esc(m.pedido)}</p><p class="small muted">Não precisa ficar perfeito. Vale tentar com o que você já sabe.</p></div>`;
+    h += `<div class="card"><div class="lbl">Estruturas pra usar</div>${m.base.map(b => `<div class="exl">${btnSom(b[0].replace(/\.\.\./g, ''))}<div><div class="en sm">${esc(b[0])}</div><div class="muted small">${esc(b[1])}</div></div></div>`).join('')}</div>`;
+    h += `<textarea id="texto" class="inp area" rows="6" lang="en" autocapitalize="sentences" autocorrect="off" spellcheck="false" placeholder="Escreva aqui, em inglês...">${esc(txt)}</textarea>`;
+    h += `<div class="card" id="mchecks">${htmlChecks(s, txt)}</div>`;
+    h += `<div class="duo"><button class="btn sec" data-act="verModelo">${R.ses.verModelo ? 'Esconder exemplo' : 'Ver um exemplo'}</button><button class="btn sec" data-act="copiarTexto">${IC.copiar} Copiar pra correção</button></div>`;
+    if (R.ses.verModelo) h += `<div class="card"><div class="lbl">Exemplo (não precisa ser igual)</div><div class="row">${btnSom(m.modelo)}<div class="en sm">${esc(m.modelo)}</div></div></div>`;
+    h += `<button class="btn" data-act="concluirMissao" id="btnMissao" ${estadoMissao(s, txt).pronto ? '' : 'disabled'}>Concluir missão</button>`;
+  }
   if (p === 'fim') {
-    const res = (R.ses.modo === 'refazer' ? R.ses.res : c.res) || { acertos: 0, total: 0, erros: [] };
+    const res = c.res || { acertos: 0, total: 0, erros: [] };
     const pct = res.total ? Math.round(res.acertos / res.total * 100) : 0;
     const msg = pct >= 90 ? 'Mandou muito bem!' : pct >= 70 ? 'Muito bom!' : pct >= 50 ? 'Bom treino. Os erros já entraram na revisão.' : 'Hoje foi puxado, e tudo bem: os erros vão voltar na revisão até grudar.';
-    h += `<div class="card center"><div class="lbl">Resumo</div><div class="score">${res.acertos}<small>/${res.total}</small></div><div class="muted">acertos de primeira (${pct}%)</div><p><b>${msg}</b></p><div class="muted small">Tempo ativo: ${Math.max(1, Math.round((c.ms || 0) / 60000))} min</div></div>`;
+    h += `<div class="card center"><div class="lbl">Resumo</div><div class="score">${res.acertos}<small>/${res.total}</small></div><div class="muted">acertos de primeira (${pct}%)</div><p><b>${msg}</b></p><div class="muted small">Tempo ativo: ${Math.max(1, Math.round((c.ms || 0) / 60000))} min · combo máximo: ${res.maxCombo || 0}</div></div>`;
     if (res.erros.length) {
       h += `<div class="card"><div class="lbl">O que você errou (vale olhar com calma)</div>${res.erros.map(e => `<div class="errl"><div class="small muted">${esc(e.pergunta)}</div><div><span class="bad-t">Você: ${esc(e.resposta || '(vazio)')}</span></div><div><span class="good-t">Certo: ${esc(e.certo)}</span></div></div>`).join('')}</div>`;
-    } else h += `<div class="card center"><b>Nenhum erro de primeira.</b><div class="muted small">Os cartões novos voltam na revisão de amanhã.</div></div>`;
+    } else h += `<div class="card center"><b>Nenhum erro de primeira.</b><div class="muted small">Lição perfeita vale +${XPV.perfeita} XP extra.</div></div>`;
     h += R.ses.modo === 'refazer' ? `<button class="btn" data-act="sair">Fechar</button>` : `<button class="btn" data-act="concluir">${IC.check} Concluir sessão</button>`;
   }
   return h;
 }
+function htmlDica(s) {
+  const d = s.dica;
+  return `<div class="card"><div class="lbl">Entenda</div><h2>${esc(d.t)}</h2>${d.p.map(x => `<p>${x}</p>`).join('')}</div>` +
+    `<div class="card"><div class="lbl">Exemplos: toque, ouça e repita</div>${d.ex.map(e => `<div class="exl">${btnSom(e[0])}<div><div class="en sm">${esc(e[0])}</div><div class="muted small">${esc(e[1])}</div></div></div>`).join('')}</div>`;
+}
 
+/* ---------- números gerais ---------- */
 function saudacao() { const h = new Date().getHours(); return h < 12 ? ['Good morning', 'Bom dia'] : h < 18 ? ['Good afternoon', 'Boa tarde'] : ['Good evening', 'Boa noite']; }
 const ehIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const instalado = () => window.navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
@@ -467,17 +624,25 @@ function sequencia() {
   for (let i = 0; i < 500; i++) { if (tem(d)) { n++; d = addDias(d, -1); } else if (fds(d)) { d = addDias(d, -1); } else break; }
   return n;
 }
-function totalMin() { return Object.values(S.dias).reduce((a, d) => a + (d.min || 0), 0); }
+const totalMin = () => Object.values(S.dias).reduce((a, d) => a + (d.min || 0), 0);
+const minSemana = () => { const seg = segundaDe(hoje()); let m = 0; for (let i = 0; i < 7; i++) { const x = S.dias[addDias(seg, i)]; if (x) m += x.min || 0; } return m; };
+const acertoGeral = () => { const f = Object.values(S.feitas).filter(x => x.total); const a = f.reduce((s, x) => s + x.acertos, 0), t = f.reduce((s, x) => s + x.total, 0); return t ? Math.round(a / t * 100) : null; };
+function anel(p, tam) {
+  const r = (tam - 12) / 2, c = 2 * Math.PI * r;
+  return `<svg class="anel" width="${tam}" height="${tam}" viewBox="0 0 ${tam} ${tam}"><circle cx="${tam / 2}" cy="${tam / 2}" r="${r}" fill="none" stroke="var(--panel2)" stroke-width="9"/>${p > 0 ? `<circle cx="${tam / 2}" cy="${tam / 2}" r="${r}" fill="none" stroke="url(#gr)" stroke-width="9" stroke-linecap="round" stroke-dasharray="${(c * p).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 ${tam / 2} ${tam / 2})"/>` : ''}<defs><linearGradient id="gr" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5ad1ff"/><stop offset="1" stop-color="#34d399"/></linearGradient></defs><text x="50%" y="54%" text-anchor="middle" font-size="${tam / 4.6}" font-weight="800" fill="var(--text)">${Math.round(p * 100)}%</text></svg>`;
+}
 
+/* ---------- Hoje ---------- */
 function htmlHoje() {
   const h = hoje(); const prox = proxima(); const sd = saudacao(); const nome = S.ajustes.nome.trim();
   const jaFez = (S.dias[h] && S.dias[h].ses || []).length > 0; const due = devidos().length;
-  let x = `<div class="top"><div class="muted small">${fmtLonga(h)}</div><h1>${esc(sd[0])}${nome ? ', ' + esc(nome) : ''}! ${btnSom(sd[0] + (nome ? ', ' + nome : '') + '!')}</h1><div class="muted">${sd[1]}${nome ? ', ' + esc(nome) : ''}!</div></div>`;
+  const seq = sequencia(); const nv = nivelDe(S.xp || 0);
+  let x = `<div class="top"><div class="muted small">${fmtLonga(h)}</div><h1>${esc(sd[0])}${nome ? ', ' + esc(nome) : ''}! ${btnSom(sd[0] + (nome ? ', ' + nome : '') + '!')}</h1><div class="chipbar"><span class="pill fire">${IC.fogo}${plural(seq, 'dia seguido', 'dias seguidos')}</span><span class="pill lvl" data-act="tab" data-v="progresso">Nível ${nv.n} · ${S.xp || 0} XP</span></div></div>`;
   if (ehIOS() && !instalado() && !S.ajustes.ocultarInstalar) x += `<div class="card note"><b>Instale no iPhone</b><p class="small">No Safari, toque em <b>Compartilhar</b> (o quadrado com a seta) e depois em <b>Adicionar à Tela de Início</b>. Use sempre pelo ícone: o progresso fica guardado no app.</p><button class="chip" data-act="ocultarInstalar">Já instalei</button></div>`;
-  if (R.celebrar) {
-    const c = R.celebrar; const s = SES[c.sid];
-    x += `<div class="card hero center"><div class="lbl">Sessão ${s.n} concluída</div><h2>${esc(s.titulo)}</h2><div class="muted">${c.acertos}/${c.total} de primeira · ${c.min} min</div><p class="small">Mais um dia na conta. Constância vale mais que intensidade.</p></div>`;
-  }
+  // semana
+  const seg = segundaDe(h); let feitosSem = 0;
+  const dias = [0, 1, 2, 3, 4].map(i => { const d = addDias(seg, i); const ok = S.dias[d] && S.dias[d].ses && S.dias[d].ses.length; if (ok) feitosSem++; return { d, ok, hoje: d === h, passado: d < h }; });
+  x += `<div class="card"><div class="row"><div class="lbl grow">Esta semana</div><span class="small ${feitosSem >= 5 ? 'good-t' : 'muted'}">${feitosSem} de 5${feitosSem >= 5 ? ' · semana completa!' : ''}</span></div><div class="week">${dias.map((o, i) => `<div><div class="wd ${o.ok ? 'ok' : ''} ${o.hoje ? 'now' : ''} ${!o.ok && o.passado && o.d >= CURSO.inicio ? 'miss' : ''}">${o.ok ? IC.check : pd(o.d).getDate()}</div><span>${['S', 'T', 'Q', 'Q', 'S'][i]}</span></div>`).join('')}</div></div>`;
   if (!prox) {
     x += `<div class="card hero"><div class="lbl">Mês 1 completo</div><h2>Você terminou as 20 sessões!</h2><p>O mês 2 está sendo preparado. Enquanto isso, a revisão diária mantém tudo fresco.</p></div>`;
   } else {
@@ -491,63 +656,154 @@ function htmlHoje() {
     else if (plan < h) status = `Estava planejada pra ${fmtCurta(plan)}. Sem problema: o plano espera você, nada é pulado.`;
     else if (plan > h) status = `Planejada pra ${fmtCurta(plan)}. Você está adiantado.`;
     if (jaFez && !emAndamento) x += `<div class="card done"><div class="row">${IC.check}<div><b>Sessão de hoje feita.</b><div class="muted small">Amanhã tem mais. A noite é sua.</div></div></div></div>`;
-    const meta = [`~30 min`, prox.itensObj.length ? `${prox.itensObj.length} palavras novas` : 'revisão geral', due && !jaFez ? `${Math.min(due, 20)} cartões pra revisar` : ''].filter(Boolean).join(' · ');
-    x += `<div class="card ${jaFez && !emAndamento ? '' : 'hero'}"><div class="lbl">Sessão ${prox.n} de ${SESSOES.length} · Semana ${prox.semana}: ${esc(sem.titulo)}</div><h2>${esc(prox.titulo)}</h2><p class="muted">${esc(prox.resumo)}</p><div class="small muted">${meta}</div>${status ? `<p class="small">${status}</p>` : ''}${btn}</div>`;
+    const meta = [`~30 min`, prox.itensObj.length ? `${prox.itensObj.length} palavras novas` : 'revisão geral', due && !jaFez ? `${Math.min(due, 20)} cartões` : ''].filter(Boolean).join(' · ');
+    x += `<div class="card ${jaFez && !emAndamento ? '' : 'hero'}"><div class="lbl">Sessão ${prox.n} de ${SESSOES.length} · Semana ${prox.semana}: ${esc(sem.titulo)}</div><h2>${esc(prox.titulo)}</h2><p class="muted">${esc(prox.resumo)}</p><div class="small muted">${meta}</div>${prox.missao ? `<div class="mtag">${IC.estrela} Missão da semana: ${esc(prox.missao.titulo)} (+${XPV.missao} XP)</div>` : ''}${status ? `<p class="small">${status}</p>` : ''}${btn}</div>`;
   }
-  if (due > 0 && (jaFez || fds(h) || !prox)) x += `<div class="card"><div class="row"><div class="grow"><b>Revisão rápida</b><div class="muted small">${due} ${due === 1 ? 'cartão' : 'cartões'} no dia de revisar (~${Math.max(2, Math.round(Math.min(due, 40) * 0.25))} min). Opcional.</div></div><button class="btn sm" data-act="revisar">Revisar</button></div></div>`;
-  const cards = Object.keys(S.cards).length; const feitas = Object.keys(S.feitas).length;
-  const seq = sequencia();
-  x += `<div class="stats"><div><b>${seq}</b><span>${seq === 1 ? 'dia seguido' : 'dias seguidos'}</span></div><div><b>${feitas}/${SESSOES.length}</b><span>sessões</span></div><div><b>${cards}</b><span>palavras</span></div><div><b>${totalMin()}</b><span>minutos</span></div></div>`;
+  const feitas = Object.keys(S.feitas).length; const semAtual = (prox || SESSOES[SESSOES.length - 1]).semana;
+  x += `<div class="card row">${anel(feitas / SESSOES.length, 78)}<div class="grow"><div class="lbl">Mês 1</div><b>${feitas} de ${SESSOES.length} sessões</b><div class="muted small">Semana ${semAtual} de 4${prox && dataPlanejada(prox.idx) < h && !(S.atual && S.atual.sid === prox.id) ? ' · um pouco atrás, tudo bem' : ' · no ritmo'}</div></div></div>`;
+  const ac = acertoGeral();
+  x += `<div class="stats three"><div><b>${minSemana()}</b><span>min na semana</span></div><div><b>${nCards()}</b><span>palavras</span></div><div><b>${ac == null ? '–' : ac + '%'}</b><span>de acerto</span></div></div>`;
+  if (due > 0 && (jaFez || fds(h) || !prox)) x += `<div class="card"><div class="row"><div class="grow"><b>Revisão rápida</b><div class="muted small">${plural(due, 'cartão', 'cartões')} no dia de revisar. Opcional, +${XPV.cartao} XP por acerto.</div></div><button class="btn sm" data-act="revisar">Revisar</button></div></div>`;
   const fracos = Object.entries(S.erros).filter(([id, n]) => n > 0 && (ITENS[id] || S.cards[id])).sort((a, b) => b[1] - a[1]).slice(0, 3);
   if (fracos.length) x += `<div class="card"><div class="lbl">Pra reforçar</div>${fracos.map(([id, n]) => { const ci = ITENS[id] || cardInfo(id); return `<div class="exl">${btnSom(ci.en)}<div class="grow"><div class="en sm">${esc(ci.en)}</div><div class="muted small">${esc(ci.pt)}</div></div><span class="tag">${n}x</span></div>`; }).join('')}</div>`;
-  const semB = semana((prox || SESSOES[SESSOES.length - 1]).semana);
+  const semB = semana(semAtual);
   if (semB && semB.bonus) x += `<div class="card"><div class="lbl">Bônus da semana (opcional)</div>${semB.bonus.map(b => `<a class="bonus" href="${b.url}" target="_blank" rel="noopener"><b>${esc(b.titulo)} ${IC.link}</b><span class="muted small">${esc(b.desc)}</span></a>`).join('')}<p class="small muted">É áudio de gente de verdade, mais rápido que o app. Se não entender quase nada, normal: ouça de novo com a transcrição.</p></div>`;
   return x;
 }
 
+/* ---------- Trilha ---------- */
+const OFF = [3, 22, 41, 22, 3];
 function htmlTrilha() {
-  const prox = proxima();
+  const prox = proxima(); const feitas = Object.keys(S.feitas).length;
+  const fase1 = Math.round(feitas / 60 * 100);
   let x = `<div class="top"><h1>Sua trilha</h1><div class="muted">Inglês pra vida, do zero. Uma sessão por dia útil, de manhã.</div></div>`;
-  x += CURSO.fases.map(f => `<div class="card ${f.n === 1 ? 'hero' : 'dimc'}"><div class="lbl">Fase ${f.n} · ${f.meses}${f.n === 1 ? ' · você está aqui' : ''}</div><h3>${esc(f.titulo)}</h3><p class="small muted">${esc(f.texto)}</p></div>`).join('');
-  x += `<h2 class="sec">Mês 1</h2>`;
+  x += `<div class="card hero"><div class="row"><div class="grow"><div class="lbl">Fase 1 · Do zero · meses 1 a 3</div><b>Mês 1 de 3</b></div><span class="small muted">${fase1}% da fase</span></div><div class="pbar"><i style="width:${Math.max(fase1, 2)}%"></i></div><p class="small muted">Sons, palavras do dia a dia, frases prontas e presente. Meta: entender e dizer frases curtas sobre você e seu dia.</p></div>`;
   CURSO.semanas.forEach(w => {
-    x += `<div class="card"><div class="lbl">Semana ${w.n} · ${esc(w.titulo)}</div>`;
-    SESSOES.filter(s => s.semana === w.n).forEach(s => {
-      const f = S.feitas[s.id]; const ehProx = prox && prox.id === s.id;
-      x += `<div class="srow ${f ? 'ok' : ''} ${ehProx ? 'now' : ''}"><span class="dot">${f ? IC.check : s.n}</span><div class="grow"><b>${esc(s.titulo)}</b><div class="muted small">${f ? `feita em ${fmtCurta(f.dia)} · ${f.acertos}/${f.total} de primeira` : `planejada pra ${fmtCurta(dataPlanejada(s.idx))}`}${ehProx ? ' · próxima' : ''}</div></div>${f ? `<button class="chip" data-act="refazer" data-s="${s.id}">Praticar de novo</button>` : ''}</div>`;
+    const ss = SESSOES.filter(s => s.semana === w.n); const nf = ss.filter(s => S.feitas[s.id]).length;
+    x += `<div class="card"><div class="row"><div class="grow"><div class="lbl">Semana ${w.n}</div><b>${esc(w.titulo)}</b></div><span class="small ${nf === ss.length ? 'good-t' : 'muted'}">${nf}/${ss.length}${nf === ss.length ? ' · completa' : ''}</span></div>`;
+    const alt = 82;
+    const pts = ss.map((s, i) => `${OFF[i % 5] + 6},${i * alt + 34}`).join(' ');
+    x += `<div class="mapa" style="height:${ss.length * alt}px"><svg class="trilho" viewBox="0 0 100 ${ss.length * alt}" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="var(--line)" stroke-width="3" stroke-dasharray="1 7" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>`;
+    ss.forEach((s, i) => {
+      const f = S.feitas[s.id]; const now = prox && prox.id === s.id; const bloq = !f && !now;
+      const top = i * alt + 8;
+      x += `<button class="node ${f ? 'ok' : ''} ${now ? 'now' : ''} ${bloq ? 'lock' : ''}" style="top:${top}px;left:${OFF[i % 5]}%" data-act="verSessao" data-s="${s.id}"><span class="bola">${f ? IC.check : bloq ? s.n : s.n}${s.missao ? `<i class="star">${IC.estrela}</i>` : ''}</span><span class="nl"><b>${esc(s.titulo)}</b><small>${f ? `${f.acertos}/${f.total} · ${fmtDM(f.dia)}` : now ? 'próxima' : fmtDM(dataPlanejada(s.idx))}</small></span></button>`;
     });
+    x += `</div>`;
     x += (w.bonus || []).map(b => `<a class="bonus sm" href="${b.url}" target="_blank" rel="noopener"><span class="muted small">Bônus:</span> ${esc(b.titulo)} ${IC.link}</a>`).join('');
     x += `</div>`;
   });
-  x += `<div class="card"><div class="lbl">Próximos marcos</div>${CURSO.marcos.map(m => `<p class="small">${esc(m)}</p>`).join('')}</div>`;
+  // caderno
+  const vistos = SESSOES.filter(s => S.feitas[s.id] || (S.atual && S.atual.sid === s.id && S.atual.feitos.includes('dica')));
+  x += `<h2 class="sec">${IC.livro} Caderno</h2><div class="card"><div class="lbl">Explicações que você já viu</div>${vistos.length ? vistos.map(s => `<button class="lrow" data-act="verDica" data-s="${s.id}"><span class="muted small">S${s.n}</span><b class="grow">${esc(s.dica.t)}</b>${IC.seta}</button>`).join('') : '<p class="small muted">Aparecem aqui depois da primeira sessão. Dá pra reler quando quiser.</p>'}</div>`;
+  x += `<div class="card"><div class="lbl">Meus textos (missões)</div>${S.textos.length ? S.textos.map((t, i) => `<button class="lrow" data-act="verTexto" data-i="${i}"><span class="muted small">${fmtDM(t.em.slice(0, 10))}</span><b class="grow">${esc(SES[t.sid].missao.titulo)}</b>${IC.seta}</button>`).join('') : '<p class="small muted">Toda sexta tem uma missão de escrita. Seus textos ficam guardados aqui.</p>'}</div>`;
+  x += `<div class="card"><div class="lbl">Próximas fases</div>${CURSO.fases.filter(f => f.n > 1).map(f => `<p class="small"><b>Fase ${f.n} · ${esc(f.titulo)}</b> <span class="muted">(${f.meses})</span><br><span class="muted">${esc(f.texto)}</span></p>`).join('')}${CURSO.marcos.map(m => `<p class="small muted">• ${esc(m)}</p>`).join('')}</div>`;
+  return x;
+}
+function sheetSessao(sid) {
+  const s = SES[sid]; const f = S.feitas[sid]; const prox = proxima(); const now = prox && prox.id === sid;
+  let h = `<div class="lbl">Sessão ${s.n} · Semana ${s.semana}</div><h2>${esc(s.titulo)}</h2><p class="muted">${esc(s.resumo)}</p>`;
+  if (f) {
+    h += `<div class="stats three"><div><b>${f.acertos}/${f.total}</b><span>de primeira</span></div><div><b>${f.min}</b><span>min</span></div><div><b>${f.xp || '–'}</b><span>XP</span></div></div><p class="small muted">Feita em ${fmtCurta(f.dia)}${f.combo ? ` · combo máximo ${f.combo}` : ''}</p>`;
+    h += `<div class="chips"><button class="chip ${R.sheet.aba === 'dica' ? 'on' : ''}" data-act="sheetAba" data-v="dica">Rever explicação</button><button class="chip ${R.sheet.aba === 'pal' ? 'on' : ''}" data-act="sheetAba" data-v="pal">Ver palavras</button>${f.erros && f.erros.length ? `<button class="chip ${R.sheet.aba === 'err' ? 'on' : ''}" data-act="sheetAba" data-v="err">Erros (${f.erros.length})</button>` : ''}</div>`;
+    if (R.sheet.aba === 'dica') h += htmlDica(s);
+    if (R.sheet.aba === 'pal') h += `<div class="card">${s.itensObj.length ? s.itensObj.map(it => `<div class="exl">${btnSom(it.en)}<div class="grow"><div class="en sm">${esc(it.en)}</div><div class="muted small">${esc(it.pt)}</div></div>${S.cards[it.id] ? forca(S.cards[it.id].box) : ''}</div>`).join('') : '<p class="small muted">Sessão de revisão, sem palavras novas.</p>'}</div>`;
+    if (R.sheet.aba === 'err') h += `<div class="card">${f.erros.map(e => `<div class="errl"><div class="small muted">${esc(e.pergunta)}</div><div><span class="bad-t">Você: ${esc(e.resposta || '(vazio)')}</span></div><div><span class="good-t">Certo: ${esc(e.certo)}</span></div></div>`).join('')}</div>`;
+    h += `<button class="btn sec" data-act="refazer" data-s="${sid}">Praticar de novo</button>`;
+  } else if (now) {
+    h += `<p class="small">${s.itensObj.length ? `${s.itensObj.length} palavras novas, ` : ''}explicação, prática${s.missao ? ' e missão de escrita' : ''}. Cerca de 30 min.</p><button class="btn" data-act="iniciar" data-s="${sid}">${S.atual && S.atual.sid === sid ? 'Continuar' : 'Começar'} ${IC.seta}</button>`;
+  } else {
+    h += `<div class="card lockc">${IC.cadeado}<div><b>Ainda bloqueada</b><div class="small muted">Ela abre quando chegar a vez, depois da sessão ${s.n - 1}. A ordem é fixa de propósito: cada uma usa o que veio antes.</div></div></div><p class="small muted">Planejada pra ${fmtCurta(dataPlanejada(s.idx))}${s.missao ? ' · tem missão de escrita' : ''}.</p>`;
+  }
+  return h;
+}
+
+/* ---------- Progresso ---------- */
+function htmlProgresso() {
+  const nv = nivelDe(S.xp || 0); const seq = sequencia();
+  const diasEst = Object.values(S.dias).filter(d => (d.ses && d.ses.length) || d.rev).length;
+  let x = `<div class="top"><h1>Seu progresso</h1><div class="muted">Constância, acertos e o que ainda falta.</div></div>`;
+  x += `<div class="card hero"><div class="row"><div class="lvlbadge">${nv.n}</div><div class="grow"><div class="lbl">Nível ${nv.n}</div><b>${S.xp || 0} XP no total</b><div class="pbar"><i style="width:${Math.round(nv.dentro / nv.need * 100)}%"></i></div><div class="small muted">Faltam ${nv.need - nv.dentro} XP pro nível ${nv.n + 1}</div></div></div></div>`;
+  x += `<div class="stats"><div><b>${seq}</b><span>sequência</span></div><div><b>${S.melhorSeq || 0}</b><span>melhor</span></div><div><b>${diasEst}</b><span>dias</span></div><div><b>${totalMin()}</b><span>minutos</span></div></div>`;
+  // calendário 5 semanas
+  const h = hoje(); const ini = addDias(segundaDe(h), -28);
+  let cel = '';
+  for (let i = 0; i < 35; i++) {
+    const d = addDias(ini, i); const v = S.dias[d]; const m = v ? (v.min || 0) : 0; const est = v && ((v.ses && v.ses.length) || v.rev);
+    const cls = d > h ? 'fut' : !est ? '' : m >= 25 ? 'n3' : m >= 10 ? 'n2' : 'n1';
+    cel += `<span class="hc ${cls} ${d === h ? 'hj' : ''}" title="${fmtDM(d)}: ${m} min"></span>`;
+  }
+  x += `<div class="card"><div class="lbl">Dias estudados · últimas 5 semanas</div><div class="heat">${['S', 'T', 'Q', 'Q', 'S', 'S', 'D'].map(l => `<span class="hl">${l}</span>`).join('')}${cel}</div><div class="small muted legend"><span class="hc"></span>nada <span class="hc n1"></span>pouco <span class="hc n2"></span>10+ min <span class="hc n3"></span>25+ min</div></div>`;
+  // nota por sessão
+  const fs = SESSOES.filter(s => S.feitas[s.id] && S.feitas[s.id].total).map(s => ({ n: s.n, p: Math.round(S.feitas[s.id].acertos / S.feitas[s.id].total * 100) }));
+  if (fs.length >= 2) {
+    const W = 300, H = 90, px = i => 14 + i * (W - 28) / (fs.length - 1), py = p => H - 14 - (p - 40) / 60 * (H - 28);
+    const pts = fs.map((o, i) => `${px(i).toFixed(1)},${py(Math.max(40, o.p)).toFixed(1)}`).join(' ');
+    x += `<div class="card"><div class="lbl">Acerto de primeira por sessão</div><svg class="linha-g" viewBox="0 0 ${W} ${H}"><line x1="14" x2="${W - 14}" y1="${py(80)}" y2="${py(80)}" stroke="var(--line)" stroke-dasharray="3 4"/><text x="${W - 14}" y="${py(80) - 4}" text-anchor="end" font-size="9" fill="var(--muted)">80%</text><polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round"/>${fs.map((o, i) => `<circle cx="${px(i).toFixed(1)}" cy="${py(Math.max(40, o.p)).toFixed(1)}" r="3.5" fill="var(--accent)"><title>S${o.n}: ${o.p}%</title></circle>`).join('')}<text x="14" y="${H - 1}" font-size="9" fill="var(--muted)">S${fs[0].n}</text><text x="${W - 14}" y="${H - 1}" text-anchor="end" font-size="9" fill="var(--muted)">S${fs[fs.length - 1].n}</text></svg></div>`;
+  } else x += `<div class="card"><div class="lbl">Acerto de primeira por sessão</div><p class="small muted">O gráfico aparece depois de 2 sessões.</p></div>`;
+  // habilidades
+  const hab = {}; Object.entries(S.stats).forEach(([t, v]) => { const k = HAB[t]; if (!k) return; hab[k] = hab[k] || { ok: 0, n: 0 }; hab[k].ok += v.ok; hab[k].n += v.n; });
+  const ordem = ['Ouvir', 'Entender', 'Gramática', 'Formar frases'];
+  const comDados = ordem.filter(k => hab[k] && hab[k].n >= 5);
+  const ordenado = comDados.slice().sort((a, b) => hab[a].ok / hab[a].n - hab[b].ok / hab[b].n);
+  const pct = k => hab[k].ok / hab[k].n;
+  const pior = comDados.length >= 2 && pct(ordenado[ordenado.length - 1]) - pct(ordenado[0]) >= 0.05 ? ordenado[0] : null;
+  const equilibrado = comDados.length >= 2 && !pior;
+  x += `<div class="card"><div class="lbl">Acerto por habilidade</div>${ordem.map(k => { const v = hab[k]; const p = v && v.n ? Math.round(v.ok / v.n * 100) : null; return `<div class="sk"><span>${k}</span><div class="pbar thin"><i class="${p != null && p < 75 ? 'w' : ''}" style="width:${p || 0}%"></i></div><span class="small ${p == null ? 'muted' : ''}">${p == null ? '–' : p + '%'}</span></div>`; }).join('')}<p class="small muted">${pior ? `Seu ponto mais fraco agora: <b>${pior}</b>. As próximas revisões já dão mais peso pro que você erra.` : equilibrado ? 'Tudo equilibrado até agora. Quando uma habilidade ficar pra trás, ela aparece aqui.' : 'Começa a contar a partir desta versão do app. Com algumas sessões, aparece seu ponto mais fraco.'}</p></div>`;
+  const fracos = Object.entries(S.erros).filter(([id, n]) => n > 0 && (ITENS[id] || S.cards[id])).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  if (fracos.length) x += `<div class="card"><div class="lbl">Pra reforçar</div>${fracos.map(([id, n]) => { const ci = ITENS[id] || cardInfo(id); return `<div class="exl">${btnSom(ci.en)}<div class="grow"><div class="en sm">${esc(ci.en)}</div><div class="muted small">${esc(ci.pt)}</div></div><span class="tag">${n}x</span></div>`; }).join('')}</div>`;
+  // conquistas
+  const nc = CONQ.filter(c => S.conquistas[c.id]).length;
+  x += `<h2 class="sec">${IC.medalha} Conquistas <span class="muted small">${nc} de ${CONQ.length}</span></h2><div class="badges">${CONQ.map(c => { const ok = S.conquistas[c.id]; return `<div class="badge ${ok ? 'ok' : ''}"><span class="bi">${ok ? IC.medalha : IC.cadeado}</span><b>${esc(c.t)}</b><small>${ok ? `em ${fmtDM(ok)}` : esc(c.d)}</small></div>`; }).join('')}</div>`;
+  // marcos
+  const feitas = Object.keys(S.feitas).length;
+  x += `<div class="card"><div class="lbl">Marcos do plano</div><div class="sk"><span>Mês 1</span><div class="pbar thin"><i style="width:${Math.round(feitas / 20 * 100)}%"></i></div><span class="small">${feitas}/20</span></div><div class="sk"><span>Missões</span><div class="pbar thin"><i style="width:${Math.round(new Set(S.textos.map(t => t.sid)).size / 4 * 100)}%"></i></div><span class="small">${new Set(S.textos.map(t => t.sid)).size}/4</span></div><div class="sk"><span>Fase 1</span><div class="pbar thin"><i style="width:${Math.round(feitas / 60 * 100)}%"></i></div><span class="small">${feitas}/60</span></div><p class="small muted">Fim do mês 3: teste rápido do EF SET (15 min). Mês 6: EF SET completo.</p></div>`;
   return x;
 }
 
+/* ---------- Palavras ---------- */
+function forca(box) { const n = Math.min(5, Math.max(0, (box || 1) - 1)); return `<span class="forca" title="força">${[0, 1, 2, 3, 4].map(i => `<i class="${i < n ? 'on' : ''}"></i>`).join('')}</span>`; }
 function htmlPalavras() {
-  const ids = Object.keys(S.cards); const dom = ids.filter(id => S.cards[id].box >= 5).length; const due = devidos().length;
-  let x = `<div class="top"><h1>Palavras</h1><div class="muted">Tudo que você já viu, com áudio.</div></div>`;
-  x += `<div class="stats three"><div><b>${ids.length}</b><span>no total</span></div><div><b>${dom}</b><span>dominadas</span></div><div><b>${due}</b><span>pra revisar</span></div></div>`;
-  if (due) x += `<button class="btn" data-act="revisarPal">Revisar agora (${due})</button>`;
-  x += `<div class="card"><div class="lbl">Adicionar uma palavra sua</div><p class="small muted">Viu uma palavra num filme, música ou no trabalho? Coloque aqui e ela entra na revisão.</p><input id="novaEn" class="inp" placeholder="Em inglês (ex.: weather)" autocapitalize="off" autocorrect="off" spellcheck="false"><input id="novaPt" class="inp" placeholder="Em português (ex.: clima, tempo)"><button class="btn sec" data-act="addPalavra">Adicionar</button></div>`;
-  x += `<input id="busca" class="inp" placeholder="Buscar palavra" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(R.busca || '')}"><div id="lista">${htmlLista()}</div>`;
+  const ids = Object.keys(S.cards); const due = devidos().length;
+  const cat = { dom: 0, apr: 0, com: 0 }; ids.forEach(id => cat[forcaCat(S.cards[id].box)]++);
+  const tot = ids.length || 1; const nDif = ids.filter(dificil).length; const nOwn = ids.filter(id => S.cards[id].own).length;
+  let x = `<div class="top"><h1>Palavras</h1><div class="muted">Tudo que você já viu, com áudio e força de cada uma.</div></div>`;
+  x += `<div class="card"><div class="row"><b class="grow">${plural(ids.length, 'palavra', 'palavras')}</b><span class="small muted">${due} pra revisar</span></div><div class="stack"><i class="s1" style="width:${cat.dom / tot * 100}%"></i><i class="s2" style="width:${cat.apr / tot * 100}%"></i><i class="s3" style="width:${cat.com / tot * 100}%"></i></div><div class="row small muted"><span class="grow"><i class="dotc s1"></i>${cat.dom} dominadas</span><span class="grow"><i class="dotc s2"></i>${cat.apr} aprendendo</span><span><i class="dotc s3"></i>${cat.com} começando</span></div>${due ? `<button class="btn" data-act="revisarPal">Revisar agora (${due})</button>` : ''}</div>`;
+  const F = R.filtroPal;
+  x += `<div class="chips">${[['todas', 'Todas'], ['rev', `Pra revisar ${due}`], ['dif', `Difíceis ${nDif}`], ['dom', `Dominadas ${cat.dom}`], ['own', `Minhas ${nOwn}`]].map(([k, t]) => `<button class="chip ${F === k ? 'on' : ''}" data-act="filtroPal" data-v="${k}">${t}</button>`).join('')}</div>`;
+  x += `<div class="row"><input id="busca" class="inp grow" placeholder="Buscar palavra" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(R.busca || '')}"><button class="icon addw" data-act="novaPalavra" aria-label="Adicionar palavra">${IC.mais}</button></div><div id="lista">${htmlLista()}</div>`;
   return x;
 }
-function forca(box) { const n = Math.min(5, Math.max(0, (box || 1) - 1)); return `<span class="forca" title="força">${[0, 1, 2, 3, 4].map(i => `<i class="${i < n ? 'on' : ''}"></i>`).join('')}</span>`; }
 function htmlLista() {
-  const q = norm(R.busca || '');
-  const linha = ci => `<div class="exl">${btnSom(ci.en)}<div class="grow"><div class="en sm">${esc(ci.en)}</div><div class="muted small">${esc(ci.pt)}</div></div>${forca(ci.c.box)}${ci.c.own ? `<button class="icon sm" data-act="apagarPal" data-id="${ci.id}" aria-label="Apagar">${IC.lixo}</button>` : ''}</div>`;
-  const filtra = ci => !q || norm(ci.en).includes(q) || norm(ci.pt).includes(q);
-  const proprias = Object.keys(S.cards).filter(id => S.cards[id].own).map(cardInfo).filter(filtra);
+  const q = norm(R.busca || ''); const F = R.filtroPal; const h = hoje();
+  const passa = ci => (!q || norm(ci.en).includes(q) || norm(ci.pt).includes(q)) && (F === 'todas' || (F === 'rev' && ci.c.due <= h) || (F === 'dif' && dificil(ci.id)) || (F === 'dom' && (ci.c.box || 1) >= 5) || (F === 'own' && ci.c.own));
+  const linha = ci => `<div class="exl">${btnSom(ci.en)}<button class="grow wbtn" data-act="verPalavra" data-id="${ci.id}"><div class="en sm">${esc(ci.en)}</div><div class="muted small">${esc(ci.pt)}</div></button>${forca(ci.c.box)}</div>`;
+  const filtrando = q || F !== 'todas';
   let x = '';
+  const proprias = Object.keys(S.cards).filter(id => S.cards[id].own).map(cardInfo).filter(passa);
   if (proprias.length) x += `<div class="card"><div class="lbl">Minhas palavras</div>${proprias.map(linha).join('')}</div>`;
   SESSOES.forEach(s => {
-    const l = s.itensObj.filter(it => S.cards[it.id]).map(it => cardInfo(it.id)).filter(filtra);
-    if (l.length) x += `<div class="card"><div class="lbl">Sessão ${s.n} · ${esc(s.titulo)}</div>${l.map(linha).join('')}</div>`;
+    const todos = s.itensObj.filter(it => S.cards[it.id]).map(it => cardInfo(it.id));
+    const l = todos.filter(passa);
+    if (!l.length) return;
+    const media = Math.round(todos.reduce((a, ci) => a + (Math.min(5, ci.c.box || 1) - 1) / 4, 0) / todos.length * 100);
+    const aberto = filtrando || R.abertos[s.id];
+    x += `<div class="card grp"><button class="ghead" data-act="abrirGrupo" data-s="${s.id}"><div class="grow"><b>${esc(s.titulo)}</b><div class="small muted">Sessão ${s.n} · ${plural(todos.length, 'palavra', 'palavras')}</div></div><div class="pbar thin gbar"><i class="g" style="width:${Math.max(media, 3)}%"></i></div><span class="small muted">${media}%</span></button>${aberto ? l.map(linha).join('') : ''}</div>`;
   });
-  if (!x) x = `<div class="card center muted small">${Object.keys(S.cards).length ? 'Nada encontrado.' : 'As palavras aparecem aqui depois da primeira sessão.'}</div>`;
+  if (!x) x = `<div class="card center muted small">${Object.keys(S.cards).length ? 'Nada encontrado com esse filtro.' : 'As palavras aparecem aqui depois da primeira sessão.'}</div>`;
   return x;
 }
+function sheetPalavra(id) {
+  const ci = cardInfo(id); if (!ci) return '<p>Palavra não encontrada.</p>';
+  const c = ci.c; const s = ci.sid ? SES[ci.sid] : null;
+  const ex = s ? s.exObj.find(e => norm(e.en).includes(norm(ci.en))) : null;
+  return `<div class="lbl">${s ? `Sessão ${s.n} · ${esc(s.titulo)}` : 'Palavra sua'}</div><div class="en">${esc(ci.en)}</div><div class="row">${btnSom(ci.en, 'lg')}<button class="chip" data-act="falarLento" data-t="${esc(ci.en)}">Devagar</button>${forca(c.box)}</div><div class="pt">${esc(ci.pt)}</div>${ci.d ? `<div class="tip">${esc(ci.d)}</div>` : ''}${ex ? `<div class="card"><div class="lbl">Num exemplo</div><div class="row">${btnSom(ex.en)}<div><div class="en sm">${esc(ex.en)}</div><div class="small muted">${esc(ex.pt)}</div></div></div></div>` : ''}<div class="stats three"><div><b>${c.ok || 0}</b><span>acertos</span></div><div><b>${(c.err || 0) + (S.erros[id] || 0)}</b><span>erros</span></div><div><b>${c.due <= hoje() ? 'hoje' : fmtDM(c.due)}</b><span>próxima revisão</span></div></div>${yg(ci.en)}${c.own ? `<button class="btn sec" data-act="apagarPal" data-id="${id}">${IC.lixo} Apagar esta palavra</button>` : ''}`;
+}
+function sheetNovaPalavra() {
+  return `<div class="lbl">Adicionar uma palavra sua</div><h2>Viu algo novo?</h2><p class="small muted">Num filme, numa música ou no trabalho. Ela entra na revisão de hoje.</p><input id="novaEn" class="inp" placeholder="Em inglês (ex.: weather)" autocapitalize="off" autocorrect="off" spellcheck="false" lang="en"><input id="novaPt" class="inp" placeholder="Em português (ex.: clima, tempo)"><button class="btn" data-act="addPalavra">Adicionar</button>`;
+}
 
+/* ---------- Ajustes ---------- */
 const HORARIOS = [['0700', '07:00'], ['0730', '07:30'], ['0800', '08:00'], ['0815', '08:15'], ['0830', '08:30']];
 function htmlAjustes() {
   const a = S.ajustes; const va = vozAtual();
@@ -555,14 +811,57 @@ function htmlAjustes() {
   x += `<div class="card"><div class="lbl">Seu nome</div><p class="small muted">Só pra te cumprimentar. Fica neste aparelho.</p><input class="inp" data-set="nome" value="${esc(a.nome)}" placeholder="Como quer ser chamado"></div>`;
   x += `<div class="card"><div class="lbl">Lembrete de manhã</div><p class="small muted">Cria um evento de segunda a sexta, a partir de ${fmtCurta(CURSO.inicio)}, com alarme na hora. Depois de adicionar, dá pra mudar no próprio calendário.</p><select class="inp" data-set="lembrete">${HORARIOS.map(([v, t]) => `<option value="${v}" ${a.lembrete === v ? 'selected' : ''}>${t}</option>`).join('')}</select><a class="btn sec" href="lembretes/sessao-${a.lembrete}.ics">Adicionar ao calendário</a><p class="small muted">No iPhone, se nada acontecer pelo app instalado, abra este mesmo endereço no Safari e toque de novo.</p></div>`;
   x += `<div class="card"><div class="lbl">Voz</div>${vozes.length ? `<select class="inp" data-set="voz">${vozes.map(v => `<option value="${esc(v.name)}" ${va && va.name === v.name ? 'selected' : ''}>${esc(v.name)} (${esc(v.lang)})</option>`).join('')}</select>` : (temVoz && speechSynthesis.getVoices().length ? '<p class="small tip">Este aparelho não tem voz em inglês instalada, então o áudio pode sair com sotaque errado. No iPhone já vem instalada. No Windows: Configurações > Hora e idioma > Fala > Adicionar vozes > Inglês (Estados Unidos).</p>' : '<p class="small muted">Carregando vozes...</p>')}<select class="inp" data-set="rate">${[[0.8, 'Mais lenta'], [0.9, 'Normal (recomendado)'], [1, 'Natural']].map(([v, t]) => `<option value="${v}" ${Number(a.rate) === v ? 'selected' : ''}>${t}</option>`).join('')}</select><button class="btn sec" data-act="testarVoz">Testar voz</button><p class="small muted">Dica pro iPhone: em Ajustes > Acessibilidade > Conteúdo Falado > Vozes > Inglês, dá pra baixar vozes melhores. Depois elas podem aparecer nesta lista. Se não sair som, confira o modo silencioso.</p></div>`;
-  x += `<div class="card"><label class="sw"><input type="checkbox" data-set="sons" ${a.sons ? 'checked' : ''}><span>Som de acerto e erro</span></label></div>`;
+  x += `<div class="card"><label class="sw"><input type="checkbox" data-set="sons" ${a.sons ? 'checked' : ''}><span>Sons de acerto, combo e comemoração</span></label></div>`;
   x += `<div class="card"><div class="lbl">Instalar no iPhone</div><p class="small">1. Abra este endereço no <b>Safari</b>.<br>2. Toque em <b>Compartilhar</b> (quadrado com a seta).<br>3. Toque em <b>Adicionar à Tela de Início</b> e depois em <b>Adicionar</b>.</p><p class="small muted">Depois disso, use sempre pelo ícone. O app funciona sem internet. O progresso do app instalado fica separado do Safari.</p></div>`;
   x += `<div class="card"><div class="lbl">Backup</div><p class="small muted">Seus dados ficam só neste aparelho. Faça um backup de vez em quando (por exemplo, todo fim de mês) e guarde no Arquivos ou no seu e-mail.</p><div class="duo"><button class="btn sec" data-act="exportar">Exportar</button><button class="btn sec" data-act="importar">Importar</button></div><input type="file" id="arqImport" accept=".json,application/json" hidden></div>`;
   x += `<div class="card"><div class="lbl">Sobre</div><p class="small">Meu Inglês · ${VERSAO}</p><p class="small muted">Nada é enviado pra internet: o app só guarda seu progresso neste aparelho. Os links de bônus abrem sites externos.</p><button class="chip danger" data-act="apagarTudo">Apagar todo o progresso</button></div>`;
   return x;
 }
 
+/* ---------- comemoração ---------- */
+function htmlModal() {
+  const m = R.modal; if (!m) return '';
+  const cores = ['#5ad1ff', '#34d399', '#8b6cff', '#fbbf24', '#ff6b7a'];
+  const conf = Array.from({ length: 42 }, (_, i) => `<i style="left:${Math.random() * 100}%;background:${cores[i % 5]};animation-delay:${(Math.random() * 0.5).toFixed(2)}s;animation-duration:${(1.4 + Math.random() * 1.1).toFixed(2)}s;transform:rotate(${Math.round(Math.random() * 360)}deg)"></i>`).join('');
+  const nv = nivelDe(S.xp || 0);
+  let h = `<div class="ov modalov"><div class="confete">${conf}</div><div class="modal">`;
+  h += `<div class="lbl">Sessão ${m.s.n} concluída</div><h2>${esc(m.s.titulo)}</h2>`;
+  h += `<div class="bigxp" data-xp="${m.xp}">+<span id="xpcount">0</span> XP</div>`;
+  h += `<div class="stats three"><div><b>${m.acertos}/${m.total}</b><span>de primeira</span></div><div><b>${m.combo}</b><span>combo máximo</span></div><div><b>${m.min}</b><span>min</span></div></div>`;
+  const destaques = [];
+  if (m.perfeita) destaques.push(`${IC.estrela} Lição perfeita! +${XPV.perfeita} XP`);
+  if (m.missao) destaques.push(`${IC.lapis} Missão da semana cumprida`);
+  if (m.semana) destaques.push(`${IC.check} Semana completa: 5 de 5!`);
+  if (m.subiu) destaques.push(`${IC.seta} Subiu pro nível ${m.subiu}!`);
+  if (destaques.length) h += `<div class="dest">${destaques.map(d => `<div>${d}</div>`).join('')}</div>`;
+  if (m.novas.length) h += `<div class="lbl">Conquista nova</div><div class="badges mini">${m.novas.map(c => `<div class="badge ok pop"><span class="bi">${IC.medalha}</span><b>${esc(c.t)}</b><small>${esc(c.d)}</small></div>`).join('')}</div>`;
+  h += `<div class="small muted center">Nível ${nv.n} · faltam ${nv.need - nv.dentro} XP pro próximo</div><button class="btn" data-act="fecharModal">Continuar</button></div></div>`;
+  return h;
+}
+function animarXP() {
+  const el = document.getElementById('xpcount'); if (!el) return;
+  const alvo = Number(el.closest('.bigxp').dataset.xp) || 0; const t0 = performance.now();
+  const passo = t => { const p = Math.min(1, (t - t0) / 900); el.textContent = Math.round(alvo * (1 - Math.pow(1 - p, 3))); if (p < 1) requestAnimationFrame(passo); };
+  requestAnimationFrame(passo);
+}
+
+/* ---------- folhas (detalhes) ---------- */
+function htmlSheet() {
+  const sh = R.sheet; if (!sh) return '';
+  let corpo = '';
+  if (sh.tipo === 'sessao') corpo = sheetSessao(sh.sid);
+  if (sh.tipo === 'dica') { const s = SES[sh.sid]; corpo = `<div class="lbl">Caderno · Sessão ${s.n}</div>${htmlDica(s)}`; }
+  if (sh.tipo === 'texto') {
+    const t = S.textos[sh.i]; const s = SES[t.sid];
+    corpo = `<div class="lbl">Missão · ${fmtCurta(t.em.slice(0, 10))}</div><h2>${esc(s.missao.titulo)}</h2><p class="small muted">${esc(s.missao.pedido)}</p><div class="card"><div class="lbl">Seu texto</div><p class="en sm pre">${esc(t.texto)}</p><button class="chip" data-act="falar" data-t="${esc(t.texto)}">${IC.som} Ouvir</button></div><div class="card"><div class="lbl">Exemplo</div><p class="en sm">${esc(s.missao.modelo)}</p></div><button class="btn sec" data-act="copiarSalvo" data-i="${sh.i}">${IC.copiar} Copiar pra correção</button>`;
+  }
+  if (sh.tipo === 'palavra') corpo = sheetPalavra(sh.id);
+  if (sh.tipo === 'nova') corpo = sheetNovaPalavra();
+  return `<div class="ov" data-act="fecharSheet"></div><div class="sheet"><div class="grab"></div><button class="icon sm fechar" data-act="fecharSheet" aria-label="Fechar">${IC.x}</button>${corpo}</div>`;
+}
+
 /* ---------- render ---------- */
+const TABS = [['hoje', 'Hoje'], ['trilha', 'Trilha'], ['progresso', 'Progresso'], ['palavras', 'Palavras'], ['ajustes', 'Ajustes']];
 function render() {
   const emSessao = R.view === 'sessao' || R.view === 'revisao';
   document.body.classList.toggle('foco', emSessao);
@@ -570,16 +869,20 @@ function render() {
   if (R.view === 'sessao' && R.ses) h = htmlSessao();
   else if (R.view === 'revisao' && R.rev) h = `<div class="shead"><button class="icon" data-act="sairRev" aria-label="Sair">${IC.x}</button><div class="grow"><div class="muted small">Revisão</div><b>Cartões do dia</b></div></div>` + htmlRevisao();
   else if (R.view === 'trilha') h = htmlTrilha();
+  else if (R.view === 'progresso') h = htmlProgresso();
   else if (R.view === 'palavras') h = htmlPalavras();
   else if (R.view === 'ajustes') h = htmlAjustes();
   else { R.view = 'hoje'; h = htmlHoje(); }
-  app.innerHTML = h;
+  app.innerHTML = h + htmlSheet() + htmlModal();
+  document.body.classList.toggle('travado', !!(R.sheet || R.modal));
   tabsEl.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.tab === R.view));
+  if (R.modal && !R.modal.animado) { R.modal.animado = true; animarXP(); }
 }
-tabsEl.innerHTML = [['hoje', 'Hoje'], ['trilha', 'Trilha'], ['palavras', 'Palavras'], ['ajustes', 'Ajustes']].map(([k, t]) => `<button data-tab="${k}">${IC[k]}<span>${t}</span></button>`).join('');
+tabsEl.innerHTML = TABS.map(([k, t]) => `<button data-tab="${k}">${IC[k]}<span>${t}</span></button>`).join('');
+function irPara(v) { R.view = v; R.sheet = null; render(); window.scrollTo(0, 0); }
 
 /* ---------- eventos ---------- */
-tabsEl.addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (!b) return; R.view = b.dataset.tab; R.celebrar = null; render(); window.scrollTo(0, 0); });
+tabsEl.addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (!b) return; irPara(b.dataset.tab); });
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]'); if (!el) return;
   const a = el.dataset.act;
@@ -588,10 +891,12 @@ document.addEventListener('click', e => {
   switch (a) {
     case 'falar': falar(el.dataset.t); break;
     case 'falarLento': falar(el.dataset.t, true); break;
+    case 'tab': irPara(el.dataset.v); break;
     case 'iniciar': iniciarSessao(el.dataset.s, 'normal'); break;
     case 'refazer': iniciarSessao(el.dataset.s, 'refazer'); break;
     case 'sair': sairSessao(); break;
     case 'concluir': concluirSessao(); break;
+    case 'fecharModal': { const novas = R.modal ? R.modal.novas : []; R.modal = null; render(); break; }
     case 'palProx': if (R.ses.palIdx + 1 < s.itensObj.length) { R.ses.palIdx++; render(); window.scrollTo(0, 0); falar(s.itensObj[R.ses.palIdx].en); } else concluirPasso('pal'); break;
     case 'palVoltar': R.ses.palIdx = Math.max(0, R.ses.palIdx - 1); render(); falar(s.itensObj[R.ses.palIdx].en); break;
     case 'dicaOk': concluirPasso('dica'); break;
@@ -599,9 +904,13 @@ document.addEventListener('click', e => {
     case 'peca': R.prat.monta.push(Number(el.dataset.i)); render(); break;
     case 'tirar': R.prat.monta.splice(Number(el.dataset.k), 1); render(); break;
     case 'verificarMonta': { const ex = R.prat.fila[R.prat.pos]; responder(R.prat.monta.map(i => ex.pecas[i]).join(' ')); break; }
-    case 'verificarDitado': { const v = (document.getElementById('ditado') || {}).value || ''; responder(v); break; }
+    case 'verificarDitado': { const v = (document.getElementById('ditado') || {}).value || ''; if (!v.trim()) { toast('Escreva sua resposta primeiro.'); break; } responder(v); break; }
     case 'continuar': continuarEx(); break;
-    case 'fimPrat': concluirPasso('prat'); break;
+    case 'valeu': minhaValeu(); break;
+    case 'verModelo': { const t = document.getElementById('texto'); if (t) S.atual.rascunho = t.value; R.ses.verModelo = !R.ses.verModelo; salvar(); render(); break; }
+    case 'copiarTexto': { const t = (document.getElementById('texto') || {}).value || ''; if (!t.trim()) { toast('Escreva o texto primeiro.'); break; } copiar(textoCorrecao(s, t)); break; }
+    case 'copiarSalvo': { const t = S.textos[Number(el.dataset.i)]; copiar(textoCorrecao(SES[t.sid], t.texto)); break; }
+    case 'concluirMissao': concluirMissao(); break;
     case 'mostrarCard': { R.rev.mostrou = true; render(); const cur = cardAtual(); if (cur && modoProducao(cur)) falar(cardInfo(cur.id).en); break; }
     case 'errei': avaliar(false); break;
     case 'acertei': avaliar(true); break;
@@ -609,13 +918,22 @@ document.addEventListener('click', e => {
     case 'revisarPal': iniciarRevisaoLivre('palavras'); break;
     case 'sairRev': { if (temVoz) speechSynthesis.cancel(); const r = R.rev; if (r && r.ms) { const d = dia(); d.min += Math.round(r.ms / 60000); } R.rev = null; R.view = R.voltar || 'hoje'; salvar(); render(); break; }
     case 'ocultarInstalar': S.ajustes.ocultarInstalar = true; salvar(); render(); break;
+    case 'verSessao': R.sheet = { tipo: 'sessao', sid: el.dataset.s, aba: S.feitas[el.dataset.s] ? 'dica' : null }; render(); break;
+    case 'sheetAba': R.sheet.aba = R.sheet.aba === el.dataset.v ? null : el.dataset.v; render(); break;
+    case 'verDica': R.sheet = { tipo: 'dica', sid: el.dataset.s }; render(); break;
+    case 'verTexto': R.sheet = { tipo: 'texto', i: Number(el.dataset.i) }; render(); break;
+    case 'verPalavra': R.sheet = { tipo: 'palavra', id: el.dataset.id }; render(); break;
+    case 'novaPalavra': R.sheet = { tipo: 'nova' }; render(); setTimeout(() => { const i = document.getElementById('novaEn'); if (i) i.focus(); }, 80); break;
+    case 'fecharSheet': R.sheet = null; render(); break;
+    case 'filtroPal': R.filtroPal = el.dataset.v; render(); break;
+    case 'abrirGrupo': R.abertos[el.dataset.s] = !R.abertos[el.dataset.s]; render(); break;
     case 'addPalavra': {
       const en = document.getElementById('novaEn').value.trim(); const pt = document.getElementById('novaPt').value.trim();
       if (!en || !pt) { toast('Preencha em inglês e em português.'); break; }
       const id = 'own-' + Date.now(); S.cards[id] = { box: 1, due: hoje(), ok: 0, err: 0, en, pt, own: true, add: hoje() };
-      salvar(); render(); falar(en); toast('Palavra adicionada. Ela entra na revisão de hoje.'); break;
+      const novas = checarConquistas(); salvar(); R.sheet = null; R.filtroPal = 'own'; render(); falar(en); toast('Palavra adicionada. Ela entra na revisão de hoje.'); setTimeout(() => avisarConquistas(novas), 1800); break;
     }
-    case 'apagarPal': if (confirm('Apagar esta palavra?')) { delete S.cards[el.dataset.id]; delete S.erros[el.dataset.id]; salvar(); render(); } break;
+    case 'apagarPal': if (confirm('Apagar esta palavra?')) { delete S.cards[el.dataset.id]; delete S.erros[el.dataset.id]; R.sheet = null; salvar(); render(); } break;
     case 'testarVoz': falar("Hello! Nice to meet you. Let's learn English together."); break;
     case 'exportar': exportar(); break;
     case 'importar': document.getElementById('arqImport').click(); break;
@@ -626,10 +944,19 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
-  if (e.target.id === 'ditado' && R.prat && !R.prat.resp) { e.preventDefault(); tick(); responder(e.target.value || ''); }
-  else if (R.prat && R.prat.resp && R.view === 'sessao') { e.preventDefault(); tick(); continuarEx(); }
+  if (e.target.id === 'texto') return;
+  if (e.target.id === 'ditado' && R.prat && !R.prat.resp) { e.preventDefault(); tick(); if ((e.target.value || '').trim()) responder(e.target.value); }
+  else if (R.prat && R.prat.resp && R.view === 'sessao' && passoAtual() === 'prat') { e.preventDefault(); tick(); continuarEx(); }
 });
-document.addEventListener('input', e => { if (e.target.id === 'busca') { R.busca = e.target.value; const l = document.getElementById('lista'); if (l) l.innerHTML = htmlLista(); } });
+let rascT = null;
+document.addEventListener('input', e => {
+  if (e.target.id === 'busca') { R.busca = e.target.value; const l = document.getElementById('lista'); if (l) l.innerHTML = htmlLista(); }
+  if (e.target.id === 'texto' && R.ses && S.atual) {
+    const s = SES[R.ses.sid]; const box = document.getElementById('mchecks'); if (box) box.innerHTML = htmlChecks(s, e.target.value);
+    const b = document.getElementById('btnMissao'); if (b) b.disabled = !estadoMissao(s, e.target.value).pronto;
+    S.atual.rascunho = e.target.value; clearTimeout(rascT); rascT = setTimeout(salvar, 600);
+  }
+});
 document.addEventListener('change', e => {
   const k = e.target.dataset && e.target.dataset.set;
   if (k) {
@@ -666,8 +993,9 @@ async function exportar() {
 /* ---------- início ---------- */
 carregar();
 if (S.atual && !SES[S.atual.sid]) S.atual = null;
+salvar();
 render();
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
-window.__mi = { S: () => S, R, SES, ITENS, devidos, novaPratica, confere };
+window.__mi = { S: () => S, R, SES, ITENS, devidos, novaPratica, confere, nivelDe, CONQ };
 })();
